@@ -23,8 +23,11 @@ import {
   AUTUMN_SEO_DATA_TOPUP_BALANCE_FEATURE_ID,
 } from "@/shared/billing";
 import {
+  costPerSerpAtDepth,
+  devicesCount,
   estimateRankCheckCredits,
   rankCheckCostApprovalError,
+  usdToMicros,
 } from "@/shared/rank-tracking";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 
@@ -44,9 +47,18 @@ interface RankCheckParams {
   locationName?: string;
   devices: "both" | "desktop" | "mobile";
   serpDepth: number;
+  trackCompetitors?: boolean;
+  trackAiOverview?: boolean;
   trigger: "manual" | "scheduled";
   keywordIds?: string[];
   maxCostCredits?: number;
+}
+
+/** Manual checks want instant answers; scheduled ones take the cheap queue. */
+function methodForTrigger(
+  trigger: RankCheckParams["trigger"],
+): "live" | "queued" {
+  return trigger === "scheduled" ? "queued" : "live";
 }
 
 export async function prepareRankCheckKeywords(input: {
@@ -55,6 +67,7 @@ export async function prepareRankCheckKeywords(input: {
   billingCustomer: BillingCustomerContext;
   devices: RankCheckParams["devices"];
   serpDepth: number;
+  trackAiOverview?: boolean;
   trigger: RankCheckParams["trigger"];
   keywordIds?: string[];
   maxCostCredits?: number;
@@ -68,8 +81,11 @@ export async function prepareRankCheckKeywords(input: {
     );
   }
 
+  const method = methodForTrigger(input.trigger);
   await RankTrackingRepository.updateRun(input.runId, {
     status: "running",
+    trigger: input.trigger,
+    method,
   });
 
   let trackingKeywords = await RankTrackingRepository.getKeywordsForConfig(
@@ -89,7 +105,7 @@ export async function prepareRankCheckKeywords(input: {
     trackingKeywords.length,
     input.devices,
     input.serpDepth,
-    input.trigger === "scheduled" ? "queued" : "live",
+    method,
   );
   if (input.maxCostCredits != null && costCredits > input.maxCostCredits) {
     throw new AppError(
@@ -123,8 +139,16 @@ export async function prepareRankCheckKeywords(input: {
     }
   }
 
+  // Budget authorized up front, in the same provider-cost micros the ledger
+  // settles in — so `spent` and `authorized` on the run are comparable.
+  const authorizedCostMicros = usdToMicros(
+    trackingKeywords.length *
+      devicesCount(input.devices) *
+      costPerSerpAtDepth(input.serpDepth, method, input.trackAiOverview),
+  );
   await RankTrackingRepository.updateRun(input.runId, {
     keywordsTotal: trackingKeywords.length,
+    authorizedCostMicros,
   });
 
   return {
@@ -132,6 +156,39 @@ export async function prepareRankCheckKeywords(input: {
       id: kw.id,
       keyword: kw.keyword,
     })),
+  };
+}
+
+/**
+ * What the run actually spent at DataForSEO, in micro-dollars, and whether that
+ * figure is final. The live path knows each call's charge as it returns; the
+ * queued path reads its task ledger, where a submission whose outcome we never
+ * learned makes the total a floor rather than a settled amount.
+ */
+async function summarizeRunSpend(
+  runId: string,
+  input: { queueStats: QueuedCheckStats | null; liveCostMicros: number | null },
+): Promise<{
+  spentCostMicros: number;
+  costStatus: "known" | "known_minimum";
+}> {
+  if (!input.queueStats) {
+    return {
+      spentCostMicros: input.liveCostMicros ?? 0,
+      costStatus: "known",
+    };
+  }
+  const ledger =
+    await RankTrackingRepository.getRankCheckTaskCostSummary(runId);
+  return {
+    spentCostMicros:
+      ledger.actualCostMicros + input.queueStats.fallbackCostMicros,
+    // Unknown submissions may have been charged without a task id to settle,
+    // and a task still outstanding hasn't reported its final cost.
+    costStatus:
+      ledger.submissionUnknown > 0 || ledger.outstanding > 0
+        ? "known_minimum"
+        : "known",
   };
 }
 
@@ -143,6 +200,9 @@ async function finalizeRankCheckRun(input: {
   trigger: RankCheckParams["trigger"];
   batchError: string | null;
   queueStats: QueuedCheckStats | null;
+  /** Live-path spend, in provider micro-dollars. Null on the queued path,
+   *  where the task ledger is the source of truth. */
+  liveCostMicros: number | null;
 }) {
   // If stale-cleanup already marked our run failed, don't overwrite that
   // decision with a completed status — a replacement run may already be
@@ -175,12 +235,19 @@ async function finalizeRankCheckRun(input: {
     errorMessage = `${incompleteCount} keyword(s) could not be checked`;
   }
 
+  const spend = await summarizeRunSpend(input.runId, {
+    queueStats: input.queueStats,
+    liveCostMicros: input.liveCostMicros,
+  });
+
   // Flipping status away from 'pending'/'running' is what releases the
   // partial-index slot for the next run.
   await RankTrackingRepository.updateRun(input.runId, {
     status: "completed",
     keywordsChecked,
     completedAt: nowIso,
+    spentCostMicros: spend.spentCostMicros,
+    costStatus: spend.costStatus,
     ...(errorMessage ? { errorMessage } : {}),
   });
 
@@ -195,14 +262,14 @@ async function finalizeRankCheckRun(input: {
   // One-line summary per run so fallback rates are visible in Workers Logs.
   // Keys match the PostHog event properties for log/event correlation.
   const queueSummary = input.queueStats
-    ? ` queue_tasks=${input.queueStats.queueTasks} queue_collected=${input.queueStats.queueCollected} fallback_tasks=${input.queueStats.fallbackTasks} fallback_checked=${input.queueStats.fallbackChecked}`
+    ? ` queue_tasks=${input.queueStats.queueTasks} queue_collected=${input.queueStats.queueCollected} fallback_tasks=${input.queueStats.fallbackTasks} fallback_checked=${input.queueStats.fallbackChecked} submission_unknown=${input.queueStats.submissionUnknown}`
     : "";
   // Error text can echo vendor/user content — keep it one line and bounded.
   const errorSummary = errorMessage
     ? ` error="${errorMessage.replace(/\s+/g, " ").slice(0, 200)}"`
     : "";
   console.log(
-    `[rank-check] ${input.runId} completed org=${input.billingCustomer.organizationId} project=${input.projectId} trigger=${input.trigger} keywords=${keywordsChecked}/${keywordsTotal}${queueSummary}${errorSummary}`,
+    `[rank-check] ${input.runId} completed org=${input.billingCustomer.organizationId} project=${input.projectId} trigger=${input.trigger} keywords=${keywordsChecked}/${keywordsTotal} spent_micros=${spend.spentCostMicros} cost_status=${spend.costStatus}${queueSummary}${errorSummary}`,
   );
 
   await captureServerEvent({
@@ -214,12 +281,15 @@ async function finalizeRankCheckRun(input: {
       status: "completed",
       trigger: input.trigger,
       keywords_checked: keywordsChecked,
+      spent_cost_micros: spend.spentCostMicros,
+      cost_status: spend.costStatus,
       ...(input.queueStats
         ? {
             queue_tasks: input.queueStats.queueTasks,
             queue_collected: input.queueStats.queueCollected,
             fallback_tasks: input.queueStats.fallbackTasks,
             fallback_checked: input.queueStats.fallbackChecked,
+            submission_unknown: input.queueStats.submissionUnknown,
           }
         : {}),
     },
@@ -285,6 +355,8 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
       locationName,
       devices,
       serpDepth,
+      trackCompetitors,
+      trackAiOverview,
       trigger,
       keywordIds,
       maxCostCredits,
@@ -324,6 +396,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
             billingCustomer,
             devices,
             serpDepth,
+            trackAiOverview,
             trigger,
             keywordIds,
             maxCostCredits,
@@ -337,6 +410,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
 
       let batchError: string | null = null;
       let queueStats: QueuedCheckStats | null = null;
+      let liveCostMicros: number | null = null;
 
       try {
         const checkContext = {
@@ -348,6 +422,8 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           locationCode,
           languageCode,
           locationName,
+          trackCompetitors: trackCompetitors ?? false,
+          trackAiOverview: trackAiOverview ?? false,
           runId,
         };
         // Scheduled checks use DataForSEO's task queue (~30% of live cost);
@@ -355,7 +431,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
         if (trigger === "scheduled") {
           queueStats = await runQueuedCheck(step, checkContext);
         } else {
-          await runLiveCheck(step, checkContext);
+          liveCostMicros = await runLiveCheck(step, checkContext);
         }
       } catch (error) {
         // Batch failure — snapshots for completed batches are already
@@ -373,6 +449,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           trigger,
           batchError,
           queueStats,
+          liveCostMicros,
         }),
       );
     } catch (error) {

@@ -16,6 +16,8 @@ type ConfigFields = {
   targetingMode: "national" | "local";
   locationName: string | undefined;
   schedule: RankTrackingConfig["scheduleInterval"];
+  trackCompetitors: boolean;
+  trackAiOverview: boolean;
 };
 
 export function useSaveConfigMutations(input: {
@@ -32,6 +34,8 @@ export function useSaveConfigMutations(input: {
     locationCode: fields.locationCode,
     languageCode: fields.languageCode,
     scheduleInterval: fields.schedule,
+    trackCompetitors: fields.trackCompetitors,
+    trackAiOverview: fields.trackAiOverview,
   };
 
   const createMutation = useMutation({

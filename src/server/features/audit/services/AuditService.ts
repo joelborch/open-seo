@@ -55,6 +55,12 @@ async function startAudit(input: {
   maxPages?: number;
   lighthouseStrategy?: LighthouseStrategy;
   limitTier: AuditLimitTier;
+  /**
+   * Archive the raw crawl to R2 (see src/server/lib/audit/archive.ts). Only the
+   * scheduler sets it: a manual audit is read in the app and cheap to re-run, so
+   * paying R2 writes for it buys nothing.
+   */
+  archive?: boolean;
 }) {
   const limits = AUDIT_LIMITS[input.limitTier];
   const maxPages = clampAuditMaxPages(input.maxPages);
@@ -119,6 +125,7 @@ async function startAudit(input: {
         projectId: input.projectId,
         startUrl,
         config,
+        archive: input.archive ?? false,
       },
     });
   } catch (error) {

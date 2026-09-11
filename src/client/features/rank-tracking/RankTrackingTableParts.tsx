@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { MapPin, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { buildCsv, downloadCsv } from "@/client/lib/csv";
 import { exportTableToSheets } from "@/client/lib/exportToSheets";
@@ -49,6 +49,62 @@ export function SerpFeatureTags({ features }: { features: string[] }) {
           {FEATURE_SHORT_LABELS[f]}
         </span>
       ))}
+    </div>
+  );
+}
+
+/**
+ * SERP-feature cell: the badges that say where the domain itself showed up
+ * (local pack rank, AI Overview citation) come first, because those are
+ * outcomes rather than page furniture, then the plain feature tags.
+ */
+export function SerpSignalTags({
+  result,
+}: {
+  result: RankTrackingDeviceResult;
+}) {
+  const { localPackPosition, aioPresent, aioClientCited, aioCitationPosition } =
+    result;
+  const hasFeatureTags = result.serpFeatures.some(
+    (f) => f in FEATURE_SHORT_LABELS,
+  );
+  if (localPackPosition == null && aioPresent !== true && !hasFeatureTags) {
+    return null;
+  }
+  return (
+    <div className="flex gap-1 flex-wrap items-center">
+      {localPackPosition != null && (
+        <span
+          className="badge badge-xs gap-0.5 cursor-help border-0 bg-info/20 text-info"
+          title={`Listed at position ${localPackPosition} in the local pack`}
+        >
+          <MapPin className="size-2.5" />
+          {localPackPosition}
+        </span>
+      )}
+      {aioPresent === true && aioClientCited === true && (
+        <span
+          className="badge badge-xs gap-0.5 cursor-help border-0 bg-success/20 text-success"
+          title={
+            aioCitationPosition != null
+              ? `Cited as source ${aioCitationPosition} in the AI Overview`
+              : "Cited in the AI Overview"
+          }
+        >
+          <Sparkles className="size-2.5" />
+          AIO{aioCitationPosition != null ? ` ${aioCitationPosition}` : ""}
+        </span>
+      )}
+      {aioPresent === true && aioClientCited !== true && (
+        <span
+          className="badge badge-xs gap-0.5 cursor-help border-0 bg-warning/20 text-warning"
+          title="AI Overview shown, but your domain is not cited in it"
+        >
+          <Sparkles className="size-2.5" />
+          AIO
+        </span>
+      )}
+      <SerpFeatureTags features={result.serpFeatures} />
     </div>
   );
 }

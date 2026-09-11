@@ -31,6 +31,13 @@ export interface RankTrackingDeviceResult {
   previousPosition: number | null;
   rankingUrl: string | null;
   serpFeatures: string[];
+  /** Rank inside the local pack, when the domain is listed in one. */
+  localPackPosition: number | null;
+  /** null = AI Overview tracking was off for this check, so nothing was
+   *  observed either way. */
+  aioPresent: boolean | null;
+  aioClientCited: boolean | null;
+  aioCitationPosition: number | null;
 }
 
 export interface RankTrackingRow {
@@ -70,6 +77,8 @@ export const createConfigSchema = z.object({
   devices: devicesEnum.optional(),
   serpDepth: z.number().int().min(10).max(100).multipleOf(10),
   scheduleInterval: scheduleEnum.optional(),
+  trackCompetitors: z.boolean().optional(),
+  trackAiOverview: z.boolean().optional(),
 });
 
 export const updateConfigSchema = z.object({
@@ -82,6 +91,8 @@ export const updateConfigSchema = z.object({
   devices: devicesEnum.optional(),
   serpDepth: z.number().int().min(10).max(100).multipleOf(10).optional(),
   scheduleInterval: scheduleEnum.optional(),
+  trackCompetitors: z.boolean().optional(),
+  trackAiOverview: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -103,6 +114,17 @@ export const getLatestResultsSchema = z.object({
 export const getLatestRunSchema = z.object({
   projectId: z.string().uuid(),
   configId: z.string().uuid(),
+});
+
+export const getRunHistorySchema = z.object({
+  projectId: z.string().uuid(),
+  configId: z.string().uuid(),
+  limit: z.number().int().positive().max(50).default(12),
+});
+
+export const retrieveRunSchema = z.object({
+  projectId: z.string().uuid(),
+  runId: z.string().uuid(),
 });
 
 export const estimateCostSchema = z.object({

@@ -1,7 +1,14 @@
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { sort } from "remeda";
+import { formatMicrosUsd } from "@/shared/rank-tracking";
 import type { RankPositionMatrixCell } from "@/serverFunctions/rank-tracking";
+
+/** Per-run spend, keyed by run id, for the column headers. */
+export interface RankRunCost {
+  spentCostMicros: number | null;
+  costStatus: "known" | "known_minimum" | null;
+}
 
 /**
  * "By date" view: keyword rows × recent check columns, each cell the position
@@ -12,10 +19,12 @@ export function RankTrackingHistoryMatrix({
   cells,
   isLoading,
   keywords,
+  runCosts,
 }: {
   cells: RankPositionMatrixCell[];
   isLoading: boolean;
   keywords: { trackingKeywordId: string; keyword: string }[];
+  runCosts?: Map<string, RankRunCost>;
 }) {
   const { runs, cellByKeyword } = useMemo(() => buildMatrix(cells), [cells]);
 
@@ -49,6 +58,7 @@ export function RankTrackingHistoryMatrix({
                 className="w-24 whitespace-nowrap text-right text-xs font-medium text-base-content/60"
               >
                 {formatDate(r.checkedAt)}
+                <RunCostLine cost={runCosts?.get(r.runId)} />
               </th>
             ))}
           </tr>
@@ -77,6 +87,29 @@ export function RankTrackingHistoryMatrix({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * What this check cost at the data provider. "≥" marks a run whose spend is a
+ * floor rather than a settled figure — a task whose submission outcome we never
+ * learned may have been charged without reporting back.
+ */
+function RunCostLine({ cost }: { cost: RankRunCost | undefined }) {
+  if (!cost || cost.spentCostMicros == null) return null;
+  const prefix = cost.costStatus === "known_minimum" ? "\u2265" : "";
+  return (
+    <span
+      className="block font-mono text-[0.65rem] font-normal text-base-content/40"
+      title={
+        cost.costStatus === "known_minimum"
+          ? "At least this much — some tasks never reported a final cost"
+          : "Data provider cost for this check"
+      }
+    >
+      {prefix}
+      {formatMicrosUsd(cost.spentCostMicros)}
+    </span>
   );
 }
 

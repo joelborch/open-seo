@@ -11,8 +11,14 @@ import {
   min,
   sql,
 } from "drizzle-orm";
+import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
-import { rankCheckRuns, rankSnapshots } from "@/db/schema";
+import {
+  rankCheckRuns,
+  rankSnapshots,
+  rankSnapshotFeatures,
+} from "@/db/schema";
+import { executeInBatches } from "@/db/runBatch";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
 
 function completedRunIdsForConfig(configId: string) {
@@ -184,6 +190,11 @@ export async function getSnapshotsForConfig(
       keyword: rankSnapshots.keyword,
       device: rankSnapshots.device,
       position: rankSnapshots.position,
+      rankAbsolute: rankSnapshots.rankAbsolute,
+      localPackPosition: rankSnapshots.localPackPosition,
+      aioPresent: rankSnapshots.aioPresent,
+      aioClientCited: rankSnapshots.aioClientCited,
+      aioCitationPosition: rankSnapshots.aioCitationPosition,
       url: rankSnapshots.url,
       serpFeatures: rankSnapshots.serpFeatures,
       checkedAt: rankSnapshots.checkedAt,
@@ -260,6 +271,11 @@ export async function getEarliestSnapshotsForKeywords(
         keyword: rankSnapshots.keyword,
         device: rankSnapshots.device,
         position: rankSnapshots.position,
+        rankAbsolute: rankSnapshots.rankAbsolute,
+        localPackPosition: rankSnapshots.localPackPosition,
+        aioPresent: rankSnapshots.aioPresent,
+        aioClientCited: rankSnapshots.aioClientCited,
+        aioCitationPosition: rankSnapshots.aioCitationPosition,
         url: rankSnapshots.url,
         serpFeatures: rankSnapshots.serpFeatures,
         checkedAt: rankSnapshots.checkedAt,
@@ -279,4 +295,73 @@ export async function getEarliestSnapshotsForKeywords(
   }
 
   return allResults;
+}
+
+export async function insertSnapshots(
+  snapshots: Array<
+    Omit<InferInsertModel<typeof rankSnapshots>, "id" | "checkedAt">
+  >,
+) {
+  // Target the (run, keyword, device) unique index explicitly. An UNtargeted
+  // ON CONFLICT DO NOTHING also swallows a primary-key collision, which would
+  // silently drop every row if the `id` serial sequence ever drifts behind
+  // max(id) (e.g. after a data import that copied explicit ids). Scoping the
+  // clause to the intended dedupe index keeps re-runs idempotent while letting
+  // a pk collision surface as a loud duplicate-key error instead of data loss.
+  await executeInBatches(snapshots, (tx, snapshot) =>
+    tx
+      .insert(rankSnapshots)
+      .values(snapshot)
+      .onConflictDoNothing({
+        target: [
+          rankSnapshots.runId,
+          rankSnapshots.trackingKeywordId,
+          rankSnapshots.device,
+        ],
+      }),
+  );
+}
+
+export async function getSnapshotsForRun(runId: string) {
+  return db.select().from(rankSnapshots).where(eq(rankSnapshots.runId, runId));
+}
+
+/** (keyword, device) -> snapshot id for a run, so features can be attached. */
+export async function getSnapshotIdsForRun(runId: string) {
+  return db
+    .select({
+      id: rankSnapshots.id,
+      trackingKeywordId: rankSnapshots.trackingKeywordId,
+      device: rankSnapshots.device,
+    })
+    .from(rankSnapshots)
+    .where(eq(rankSnapshots.runId, runId));
+}
+
+/**
+ * Rewrite the feature rows for a set of snapshots. Delete-then-insert rather
+ * than upsert because the table has no natural unique key, and a replayed
+ * workflow step must not double the rows.
+ */
+export async function replaceSnapshotFeatures(
+  snapshotIds: number[],
+  rows: Array<InferInsertModel<typeof rankSnapshotFeatures>>,
+) {
+  if (snapshotIds.length === 0) return;
+  // One extra bind is unused here, but keep the IN list under D1's ~100
+  // bound-parameter ceiling.
+  const deleteBatchSize = 90;
+  for (let i = 0; i < snapshotIds.length; i += deleteBatchSize) {
+    await db
+      .delete(rankSnapshotFeatures)
+      .where(
+        inArray(
+          rankSnapshotFeatures.snapshotId,
+          snapshotIds.slice(i, i + deleteBatchSize),
+        ),
+      );
+  }
+  await executeInBatches(rows, (tx, row) =>
+    tx.insert(rankSnapshotFeatures).values(row),
+  );
 }

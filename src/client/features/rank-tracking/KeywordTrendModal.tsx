@@ -10,6 +10,7 @@ import { getRankKeywordHistory } from "@/serverFunctions/rank-tracking";
 import type { RankKeywordHistoryPoint } from "@/serverFunctions/rank-tracking";
 import { LOCATIONS } from "@/client/features/keywords/locations";
 import { formatLocationLabel } from "@/shared/keyword-locations";
+import { emptyRankTrackingDeviceResult } from "@/shared/rank-tracking";
 import { csvChange, DeviceRankCell } from "./RankTrackingTableParts";
 import {
   RankTrendChart,
@@ -252,10 +253,10 @@ export function KeywordTrendModal({
                         ) : (
                           <DeviceRankCell
                             result={{
+                              ...emptyRankTrackingDeviceResult(
+                                r.previousPosition,
+                              ),
                               position: r.position,
-                              previousPosition: r.previousPosition,
-                              rankingUrl: null,
-                              serpFeatures: [],
                             }}
                           />
                         )}

@@ -51,6 +51,8 @@ beforeAll(async () => {
       serp_depth INTEGER NOT NULL,
       schedule_interval TEXT NOT NULL DEFAULT 'weekly',
       location_name TEXT,
+      track_competitors INTEGER NOT NULL DEFAULT 0,
+      track_ai_overview INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       last_checked_at TEXT,
       next_check_at TEXT,

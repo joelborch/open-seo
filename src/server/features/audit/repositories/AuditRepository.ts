@@ -76,6 +76,9 @@ async function completeAudit(
   data: {
     pagesCrawled: number;
     pagesTotal: number;
+    /** null when too few indexable pages were fetched to score (see site-health). */
+    healthScore: number | null;
+    pagesConsidered: number;
   },
 ) {
   await db

@@ -2,6 +2,11 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { SearchConsoleConnectionCard } from "@/client/features/gsc/SearchConsoleConnectionCard";
+import {
+  HealthDelta,
+  HealthScore,
+  HealthSparkline,
+} from "@/client/features/audit/siteHealth";
 import { AUDIT_ISSUE_TYPES } from "@/shared/audit-issues";
 
 import {
@@ -161,6 +166,11 @@ export function AuditHealthCard({
         </Link>
       }
     >
+      <SiteHealthHeadline
+        score={audit.healthScore}
+        delta={audit.healthScoreDelta}
+        history={audit.healthHistory}
+      />
       {audit.topIssues.length === 0 ? (
         <div className="flex items-center gap-2 text-sm text-base-content/70">
           <Check className="size-4 text-success" />
@@ -201,6 +211,38 @@ export function AuditHealthCard({
         </ul>
       )}
     </CardShell>
+  );
+}
+
+/**
+ * Score first: it is the one number that answers "is my site getting better?",
+ * and the issue list below it explains the number. Hidden entirely until an
+ * audit has scored one, so a new project isn't shown an empty headline.
+ */
+function SiteHealthHeadline({
+  score,
+  delta,
+  history,
+}: {
+  score: number | null;
+  delta: number | null;
+  history: number[];
+}) {
+  if (score === null) return null;
+
+  return (
+    <div className="mb-4 flex items-end justify-between gap-4">
+      <div>
+        <p className="text-xs uppercase tracking-wide text-base-content/60">
+          Site health
+        </p>
+        <div className="flex items-center gap-2">
+          <HealthScore score={score} />
+          <HealthDelta delta={delta} />
+        </div>
+      </div>
+      <HealthSparkline scores={history} />
+    </div>
   );
 }
 

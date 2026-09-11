@@ -18,6 +18,7 @@
     "src/db/index.ts",
     "src/db/schema.ts",
     "src/db/app.schema.ts",
+    "src/db/monitoring.schema.ts",
     "src/db/better-auth-schema.ts",
     "src/db/pg/schema.ts",
     // Standalone CLI/dev scripts, invoked via package.json scripts

@@ -42,6 +42,16 @@ export const DB_STEP: WorkflowStepConfig = {
   timeout: "2 minutes",
 };
 
+/**
+ * R2 crawl archive: paged reads of every page, link and issue row, streamed out
+ * as gzipped shards. Retries are safe (deterministic keys, overwritten parts) and
+ * worth having, since a transient R2 error is the likely failure.
+ */
+export const ARCHIVE_STEP: WorkflowStepConfig = {
+  retries: { limit: 2, delay: "10 seconds", backoff: "exponential" },
+  timeout: "10 minutes",
+};
+
 /** Cross-page checks read every page row of the audit — allow more time. */
 export const MULTIPAGE_CHECKS_STEP: WorkflowStepConfig = {
   retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },

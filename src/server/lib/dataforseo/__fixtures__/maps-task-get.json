@@ -1,0 +1,160 @@
+{
+  "status_code": 20000,
+  "_comment": "Real phone numbers have been redacted with 555-style dummy numbers.",
+  "tasks": [
+    {
+      "id": "09071634-1337-0066-0000-234af57239ae",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "cost": 0.0006,
+      "data": {
+        "keyword": "dentist near me",
+        "location_coordinate": "29.7628686,-95.4548186,13z",
+        "tag": "seoyolo-c3142ffa99c90da996d2a4ea4f93668e-820"
+      },
+      "result": [
+        {
+          "keyword": "dentist near me",
+          "check_url": "https://google.com/maps/search/dentist+near+me/@29.7628686,-95.4548186,13z?hl=en&gl=US&uule=w+CAIQIFISCQs2MuSEtepUEUK33kOSuTsc",
+          "items": [
+            {
+              "type": "maps_search",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "title": "Houston Dentists at Post Oak",
+              "domain": "www.houstondentistsatpostoak.com",
+              "url": "https://www.houstondentistsatpostoak.com/",
+              "phone": "+15555551230",
+              "address": "1330 Post Oak Blvd #1300, Houston, TX 77056",
+              "address_info": {
+                "address": "1330 Post Oak Blvd #1300",
+                "borough": "Westside",
+                "city": "Houston",
+                "country_code": "US",
+                "region": "Texas",
+                "zip": "77056"
+              },
+              "place_id": "ChIJwSTL_yDBQIYRYzpHj2nqo4M",
+              "cid": "9485682979268672099",
+              "rating": {
+                "rating_max": null,
+                "rating_type": "Max5",
+                "value": 4.9,
+                "votes_count": 301
+              },
+              "category": "Dentist"
+            },
+            {
+              "type": "maps_search",
+              "rank_group": 2,
+              "rank_absolute": 2,
+              "title": "Dentists at Woodway",
+              "domain": "www.dentistsatwoodway.com",
+              "url": "https://www.dentistsatwoodway.com/",
+              "phone": "+15555551231",
+              "address": "4801 Woodway Dr #360W, Houston, TX 77056",
+              "address_info": {
+                "address": "4801 Woodway Dr #360W",
+                "borough": "Westside",
+                "city": "Houston",
+                "country_code": "US",
+                "region": "Texas",
+                "zip": "77056"
+              },
+              "place_id": "ChIJCawOZpLBQIYRmwsclTcTwYo",
+              "cid": "9998293777184983963",
+              "rating": {
+                "rating_max": null,
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": 17
+              },
+              "category": "Dentist"
+            },
+            {
+              "type": "maps_search",
+              "rank_group": 3,
+              "rank_absolute": 3,
+              "title": "Uptown Park Dental - Shawn M. Rodgers, DDS, PLLC",
+              "domain": "www.uptownparkdental.com",
+              "url": "http://www.uptownparkdental.com/",
+              "phone": "+15555551232",
+              "address": "1121 Uptown Park Blvd #19, Houston, TX 77056",
+              "address_info": {
+                "address": "1121 Uptown Park Blvd #19",
+                "borough": "Westside",
+                "city": "Houston",
+                "country_code": "US",
+                "region": "Texas",
+                "zip": "77056"
+              },
+              "place_id": "ChIJPYwv_zfBQIYR_fwm-MPNHko",
+              "cid": "5340932449673608445",
+              "rating": {
+                "rating_max": null,
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": 138
+              },
+              "category": "Dentist"
+            },
+            {
+              "type": "maps_search",
+              "rank_group": 4,
+              "rank_absolute": 4,
+              "title": "Cosmetic Dentists of Houston",
+              "domain": "www.houstondental.com",
+              "url": "https://www.houstondental.com/",
+              "phone": "+15555551233",
+              "address": "1900 W Loop S Ste 1150, Houston, TX 77027",
+              "address_info": {
+                "address": "1900 W Loop S Ste 1150",
+                "borough": "Westside",
+                "city": "Houston",
+                "country_code": "US",
+                "region": "Texas",
+                "zip": "77027"
+              },
+              "place_id": "ChIJM1orD0DBQIYR8_kX1AoIIUU",
+              "cid": "4981271505449515507",
+              "rating": {
+                "rating_max": null,
+                "rating_type": "Max5",
+                "value": 4.9,
+                "votes_count": 670
+              },
+              "category": "Dentist"
+            },
+            {
+              "type": "maps_search",
+              "rank_group": 5,
+              "rank_absolute": 5,
+              "title": "Mabrito Dental",
+              "domain": "www.mabrito.com",
+              "url": "https://www.mabrito.com/",
+              "phone": "+15555551234",
+              "address": "1233 W Loop S #1225, Houston, TX 77027",
+              "address_info": {
+                "address": "1233 W Loop S #1225",
+                "borough": "Afton Oaks / River Oaks Area",
+                "city": "Houston",
+                "country_code": "US",
+                "region": "Texas",
+                "zip": "77027"
+              },
+              "place_id": "ChIJqV4NOzjBQIYRzQZ_zgii1QY",
+              "cid": "492477892974806733",
+              "rating": {
+                "rating_max": null,
+                "rating_type": "Max5",
+                "value": 4.9,
+                "votes_count": 239
+              },
+              "category": "Dentist"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

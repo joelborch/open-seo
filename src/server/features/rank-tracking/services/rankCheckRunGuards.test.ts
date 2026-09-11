@@ -41,6 +41,8 @@ const input = {
     locationName: null,
     devices: "desktop" as const,
     serpDepth: 20,
+    trackCompetitors: false,
+    trackAiOverview: false,
   },
   projectId: "project_1",
   billingCustomer: {

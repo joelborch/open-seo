@@ -8,6 +8,7 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
+import { runScheduledCrawls } from "@/server/features/audit-schedules/services/scheduledCrawls";
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
@@ -233,8 +234,21 @@ export default {
       watchdogError = err;
       console.error("[cron] Stale-audit reconcile failed:", err);
     }
+    // Scheduled crawls next: they start Workflow instances and do no metered
+    // provider work, so a slow rank tick shouldn't delay them. Held and
+    // rethrown for the same reason as the watchdog above — a failing crawl
+    // scheduler must not suppress the rank checks, but the invocation must
+    // still report as failed.
+    let crawlSchedulerError: unknown;
+    try {
+      await withPgClient(() => runScheduledCrawls());
+    } catch (err) {
+      crawlSchedulerError = err;
+      console.error("[cron] Scheduled crawls failed:", err);
+    }
     // Scope a per-request Postgres client for the cron run (no-op in D1 mode).
     await withPgClient(() => runScheduledRankChecks(env));
     if (watchdogError) throw watchdogError;
+    if (crawlSchedulerError) throw crawlSchedulerError;
   },
 };

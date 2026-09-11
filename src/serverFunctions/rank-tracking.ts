@@ -13,6 +13,8 @@ import {
   triggerCheckSchema,
   getLatestResultsSchema,
   getLatestRunSchema,
+  getRunHistorySchema,
+  retrieveRunSchema,
   estimateCostSchema,
   addKeywordsSchema,
   removeKeywordsSchema,
@@ -83,6 +85,8 @@ export const createRankTrackingConfig = createServerFn({ method: "POST" })
       devices: data.devices,
       serpDepth: data.serpDepth,
       scheduleInterval: data.scheduleInterval,
+      trackCompetitors: data.trackCompetitors,
+      trackAiOverview: data.trackAiOverview,
     });
 
     waitUntil(
@@ -114,6 +118,8 @@ export const updateRankTrackingConfig = createServerFn({ method: "POST" })
       devices: data.devices,
       serpDepth: data.serpDepth,
       scheduleInterval: data.scheduleInterval,
+      trackCompetitors: data.trackCompetitors,
+      trackAiOverview: data.trackAiOverview,
       isActive: data.isActive,
     });
     return { success: true };
@@ -164,6 +170,49 @@ export const getLatestRankRun = createServerFn({ method: "POST" })
   .validator(getLatestRunSchema)
   .handler(async ({ data, context }) => {
     return RankTrackingService.getLatestRun(data.configId, context.projectId);
+  });
+
+export const getRankRunHistory = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(getRunHistorySchema)
+  .handler(async ({ data, context }) => {
+    return RankTrackingService.getRunHistory(
+      data.configId,
+      context.projectId,
+      data.limit,
+    );
+  });
+
+/**
+ * Collect an interrupted run's already-paid-for queued tasks. Free: it reads
+ * DataForSEO's stored task ids and never posts a new task or falls back to the
+ * live endpoint, so a user can rescue results without paying twice.
+ */
+export const retrieveRankCheckRun = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(retrieveRunSchema)
+  .handler(async ({ data, context }) => {
+    const result = await RankTrackingService.retrieveRun({
+      runId: data.runId,
+      projectId: context.projectId,
+    });
+
+    waitUntil(
+      captureServerEvent({
+        distinctId: context.userId,
+        event: "rank_tracking:run_retrieve",
+        organizationId: context.organizationId,
+        properties: {
+          project_id: context.projectId,
+          run_id: data.runId,
+          collected: result.collected,
+          still_pending: result.stillPending,
+          failed: result.failed,
+        },
+      }),
+    );
+
+    return result;
   });
 
 export const estimateRankCheckCost = createServerFn({ method: "POST" })

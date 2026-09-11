@@ -5,6 +5,7 @@ import { useCustomer } from "autumn-js/react";
 import {
   getLatestRankResults,
   getRankPositionMatrix,
+  getRankRunHistory,
   estimateRankCheckCost,
 } from "@/serverFunctions/rank-tracking";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
@@ -18,6 +19,7 @@ import { RankTrackingTable } from "./RankTrackingTable";
 import {
   countMatrixRuns,
   RankTrackingHistoryMatrix,
+  type RankRunCost,
 } from "./RankTrackingHistoryMatrix";
 import { RankTrackingTableToolbar } from "./RankTrackingTableToolbar";
 import {
@@ -39,6 +41,7 @@ import {
 import { CheckConfirmModal } from "./CheckConfirmModal";
 import { useMetricsRefresh } from "./useMetricsRefresh";
 import { useRankCheckTrigger } from "./useRankCheckTrigger";
+import { useRankRunCollect } from "./useRankRunCollect";
 import { useRankRunPolling } from "./useRankRunPolling";
 
 function deviceVisibility(
@@ -112,6 +115,27 @@ export function RankTrackingDomainDetail({
       }),
   });
   const historyAvailable = countMatrixRuns(matrixCells ?? []) >= 2;
+
+  // What each check cost at the data provider, shown under its history column.
+  // Only fetched once the history view is actually open.
+  const { data: runHistory } = useQuery({
+    queryKey: ["rankRunHistory", projectId, config.id],
+    queryFn: () =>
+      getRankRunHistory({ data: { projectId, configId: config.id } }),
+    enabled: historyAvailable && viewMode === "history",
+  });
+  const runCosts = useMemo(
+    () =>
+      new Map<string, RankRunCost>(
+        (runHistory ?? []).map((run) => [
+          run.id,
+          { spentCostMicros: run.spentCostMicros, costStatus: run.costStatus },
+        ]),
+      ),
+    [runHistory],
+  );
+
+  const collectRun = useRankRunCollect(projectId, config.id);
 
   const { data: costEstimate } = useQuery({
     queryKey: ["rankTrackingCostEstimate", projectId, config.id],
@@ -212,6 +236,15 @@ export function RankTrackingDomainDetail({
           <span>
             This run may be unresponsive and will be cleaned up automatically.
           </span>
+          {/* The queued tasks were already paid for, so collecting them is free
+              — far better than letting cleanup drop them and re-running. */}
+          <button
+            className="btn btn-ghost btn-xs"
+            disabled={collectRun.isPending}
+            onClick={() => collectRun.mutate(latestRun.id)}
+          >
+            {collectRun.isPending ? "Collecting…" : "Collect results"}
+          </button>
         </div>
       )}
 
@@ -314,6 +347,7 @@ export function RankTrackingDomainDetail({
             <RankTrackingHistoryMatrix
               cells={matrixCells ?? []}
               isLoading={matrixLoading}
+              runCosts={runCosts}
               keywords={filtered.map((r) => ({
                 trackingKeywordId: r.trackingKeywordId,
                 keyword: r.keyword,

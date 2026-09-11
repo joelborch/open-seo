@@ -1,0 +1,23 @@
+{
+  "status_code": 20000,
+  "tasks": [
+    {
+      "id": "09071625-1337-0066-0000-04bc97a08438",
+      "status_code": 40102,
+      "status_message": "No Search Results.",
+      "cost": 0,
+      "data": {
+        "keyword": "dermatologist",
+        "location_coordinate": "41.9190676,-87.5616976,13z",
+        "tag": "seoyolo-e47c8712e93f5a339e6d20ac410def6e-12"
+      },
+      "result": [
+        {
+          "keyword": "dermatologist",
+          "check_url": "https://google.com/maps/search/dermatologist/@41.9190676,-87.5616976,13z?hl=en&gl=US&uule=w+CAIQIFISCQs2MuSEtepUEUK33kOSuTsc",
+          "items": null
+        }
+      ]
+    }
+  ]
+}

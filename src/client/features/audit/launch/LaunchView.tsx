@@ -2,6 +2,7 @@ import { useCustomer } from "autumn-js/react";
 import { AuditHistorySection } from "@/client/features/audit/launch/AuditHistorySection";
 import { LaunchFormCard } from "@/client/features/audit/launch/LaunchFormCard";
 import { useLaunchController } from "@/client/features/audit/launch/useLaunchController";
+import { ScheduleSection } from "@/client/features/audit/schedule/ScheduleSection";
 import { getCustomerPlanStatus } from "@/client/features/billing/plan-detection";
 import { useSession } from "@/lib/auth-client";
 import { isHostedClientAuthMode } from "@/lib/auth-mode";
@@ -57,6 +58,13 @@ function LaunchContent({
         <LaunchFormCard
           launchForm={controller.launchForm}
           commitMaxPagesInput={controller.commitMaxPagesInput}
+          maxPagesLimit={controller.maxPagesLimit}
+        />
+
+        <ScheduleSection
+          projectId={projectId}
+          // Prefill a new schedule with the last URL the user audited by hand.
+          fallbackStartUrl={controller.historyQuery.data?.[0]?.startUrl ?? ""}
           maxPagesLimit={controller.maxPagesLimit}
         />
 

@@ -44,6 +44,12 @@ export const audits = pgTable(
     lighthouseCompleted: integer("lighthouse_completed").notNull().default(0),
     lighthouseFailed: integer("lighthouse_failed").notNull().default(0),
     currentPhase: text("current_phase").default("discovery"),
+    // Site Health (see src/shared/site-health.ts), stamped at finalize.
+    // healthScore is null when the crawl found too few indexable pages to
+    // score; pagesConsidered is the denominator it was computed from, kept so
+    // a score can be explained (and re-derived) without re-reading the pages.
+    healthScore: integer("health_score"),
+    pagesConsidered: integer("pages_considered"),
     // Failure diagnostics; null unless status = "failed". errorCode is a
     // closed vocabulary (see classifyAuditError) so failures are aggregable;
     // errorDetail is the raw message, truncated. failedPhase records which

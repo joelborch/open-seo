@@ -9,7 +9,7 @@ import {
   DeviceRankCell,
   DeviceUrlCell,
   DifficultyCell,
-  SerpFeatureTags,
+  SerpSignalTags,
   VolumeCell,
 } from "./RankTrackingTableParts";
 import type { SelectionAnchor } from "@/client/components/table/tableSelection";
@@ -24,7 +24,7 @@ const HEADER_TOOLTIPS: Record<string, string> = {
   mobilePosition:
     "Current Google ranking position, showing change from the comparison period",
   url: "The page on your site that ranks for this keyword",
-  serp: "Special result features appearing on the search results page (e.g. AI Overview, People Also Ask)",
+  serp: "Special result features on the page, and where your domain appeared in them — local pack rank and AI Overview citation come first",
 };
 
 export function SortableHeader({
@@ -188,11 +188,7 @@ function makeSerpColumn(
         SERP Features
       </span>
     ),
-    cell: ({ row }) => {
-      const features = row.original[device].serpFeatures;
-      if (features.length === 0) return null;
-      return <SerpFeatureTags features={features} />;
-    },
+    cell: ({ row }) => <SerpSignalTags result={row.original[device]} />,
   };
 }
 

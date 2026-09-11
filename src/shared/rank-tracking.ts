@@ -3,7 +3,10 @@ import {
   SEO_DATA_COST_MARKUP,
   roundUsdForBilling,
 } from "./billing";
-import type { RankTrackingConfig } from "@/types/schemas/rank-tracking";
+import type {
+  RankTrackingConfig,
+  RankTrackingDeviceResult,
+} from "@/types/schemas/rank-tracking";
 
 // ---------------------------------------------------------------------------
 // Cost constants
@@ -56,12 +59,48 @@ export const rankCheckCostApprovalError = (
 // Cost estimation
 // ---------------------------------------------------------------------------
 
-/** DataForSEO cost for a single SERP request at the given depth. */
-function costPerSerpAtDepth(depth: number, method: RankCheckMethod): number {
+/**
+ * Asking DataForSEO to load the AI Overview block (`load_async_ai_overview`)
+ * doubles what the SERP task costs, so the config opt-in has to be visible in
+ * every estimate and reservation.
+ */
+export const AI_OVERVIEW_COST_MULTIPLIER = 2;
+
+/**
+ * DataForSEO's own price for a single SERP request at the given depth — no
+ * markup. This is the unit the rank-check ledger reserves and settles in
+ * (`rank_check_tasks.reserved_cost_micros`), which is why it is exported.
+ */
+export function costPerSerpAtDepth(
+  depth: number,
+  method: RankCheckMethod,
+  aiOverview = false,
+): number {
   const pages = depth / 10;
-  return method === "queued"
-    ? QUEUED_BASE_PAGE_COST_USD + (pages - 1) * QUEUED_EXTRA_PAGE_COST_USD
-    : LIVE_BASE_PAGE_COST_USD + (pages - 1) * LIVE_EXTRA_PAGE_COST_USD;
+  const base =
+    method === "queued"
+      ? QUEUED_BASE_PAGE_COST_USD + (pages - 1) * QUEUED_EXTRA_PAGE_COST_USD
+      : LIVE_BASE_PAGE_COST_USD + (pages - 1) * LIVE_EXTRA_PAGE_COST_USD;
+  return aiOverview ? base * AI_OVERVIEW_COST_MULTIPLIER : base;
+}
+
+// ---------------------------------------------------------------------------
+// Money in micros
+// ---------------------------------------------------------------------------
+
+/**
+ * USD to integer micro-dollars, rounded up. Every provider-cost column
+ * (`*_cost_micros`) stores integers so a run's spend can be summed in SQL
+ * without float drift; rounding up means a rollup is never an understatement.
+ */
+export function usdToMicros(usd: number): number {
+  return Math.ceil(usd * 1_000_000);
+}
+
+/** Display helper: micro-dollars as a dollar string (4 decimals, so sub-cent
+ *  rank-check spend is still readable). */
+export function formatMicrosUsd(micros: number): string {
+  return `$${(micros / 1_000_000).toFixed(4)}`;
 }
 
 export function depthToPages(depth: number): number {
@@ -242,4 +281,24 @@ export function scheduleLabel(
 
 export function devicesCount(devices: RankTrackingConfig["devices"]): number {
   return devices === "both" ? 2 : 1;
+}
+
+/**
+ * A device row with nothing observed. Both the read model (keywords that have
+ * never been checked) and the sparse trend/history views need one, so the shape
+ * lives in one place — a new SERP-detail column then has a single default.
+ */
+export function emptyRankTrackingDeviceResult(
+  previousPosition: number | null = null,
+): RankTrackingDeviceResult {
+  return {
+    position: null,
+    previousPosition,
+    rankingUrl: null,
+    serpFeatures: [],
+    localPackPosition: null,
+    aioPresent: null,
+    aioClientCited: null,
+    aioCitationPosition: null,
+  };
 }

@@ -3,13 +3,14 @@ import type {
   RankTrackingDeviceResult,
   RankTrackingRow,
 } from "@/types/schemas/rank-tracking";
+import { emptyRankTrackingDeviceResult } from "@/shared/rank-tracking";
 import { computeScorecards } from "./rankTrackingScorecards";
 
 function device(
   position: number | null,
   previousPosition: number | null,
 ): RankTrackingDeviceResult {
-  return { position, previousPosition, rankingUrl: null, serpFeatures: [] };
+  return { ...emptyRankTrackingDeviceResult(previousPosition), position };
 }
 
 function row(

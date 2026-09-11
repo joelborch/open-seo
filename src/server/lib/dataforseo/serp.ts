@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { dataforseoGet, dataforseoPost } from "@/server/lib/dataforseo/core";
 import { MAX_TASKS_PER_POST } from "@/server/lib/dataforseo/shared";
 import {
@@ -11,6 +10,12 @@ import {
   type DataforseoItemsTask,
   type DataforseoTaskLike,
 } from "@/server/lib/dataforseo/envelope";
+import {
+  buildRankCheckResult,
+  serpSnapshotItemSchema,
+  type RankCheckResult,
+  type SerpLiveItem,
+} from "@/server/lib/dataforseo/serpItems";
 import { AppError } from "@/server/lib/errors";
 
 // Default depth for keyword SERP analysis. DataForSEO crawls (and bills) one
@@ -44,44 +49,34 @@ function stopCrawlOnTarget(targetDomain: string) {
   };
 }
 
-// Kept as a hand-written schema: the SDK's BaseSerpApiElementItem type omits
-// etv / estimated_paid_traffic_cost / backlinks_info / rank_changes, which we
-// rely on. The fields survive deserialization (the SDK copies unknown keys), so
-// validating here is both our type-safety guard and how we read those fields.
-const serpSnapshotItemSchema = z
-  .object({
-    type: z.string(),
-    rank_group: z.number().nullable().optional(),
-    rank_absolute: z.number().nullable().optional(),
-    domain: z.string().nullable().optional(),
-    title: z.string().nullable().optional(),
-    url: z.string().nullable().optional(),
-    description: z.string().nullable().optional(),
-    breadcrumb: z.string().nullable().optional(),
-    etv: z.number().nullable().optional(),
-    estimated_paid_traffic_cost: z.number().nullable().optional(),
-    backlinks_info: z
-      .object({
-        referring_domains: z.number().nullable().optional(),
-        backlinks: z.number().nullable().optional(),
-      })
-      .passthrough()
-      .nullable()
-      .optional(),
-    rank_changes: z
-      .object({
-        previous_rank_absolute: z.number().nullable().optional(),
-        is_new: z.boolean().nullable().optional(),
-        is_up: z.boolean().nullable().optional(),
-        is_down: z.boolean().nullable().optional(),
-      })
-      .passthrough()
-      .nullable()
-      .optional(),
-  })
-  .passthrough();
+/** Config opt-ins that change what a rank-check request buys. */
+export interface RankCheckCollectionOptions {
+  /** Keep crawling past the target's listing so competitor ranks are captured
+   *  too. Costs every page of `depth` instead of stopping early. */
+  trackCompetitors?: boolean;
+  /** Ask Google to load the AI Overview block. Doubles the task's cost, so it
+   *  is only sent when the config opted in. */
+  trackAiOverview?: boolean;
+}
 
-export type SerpLiveItem = z.infer<typeof serpSnapshotItemSchema>;
+/**
+ * Per-request params derived from the collection opt-ins. Shared by the live
+ * and task_post payloads so the two paths can never drift on what they bought.
+ */
+function collectionParams(
+  input: RankCheckCollectionOptions & { targetDomain: string },
+) {
+  return {
+    // Competitor tracking needs the whole SERP, so the early-stop optimization
+    // is off in that mode — the run pays for every page of `depth`.
+    ...(input.trackCompetitors ? {} : stopCrawlOnTarget(input.targetDomain)),
+    ...(input.trackAiOverview ? { load_async_ai_overview: true } : {}),
+  };
+}
+
+// A cited source inside a SERP feature block. `ai_overview_reference` entries
+// carry domain + url (and no rank of their own), `link_element` entries the
+// same two fields — so one shape reads both.
 
 export async function fetchLiveSerp(input: {
   keyword: string;
@@ -115,49 +110,19 @@ export async function fetchLiveSerp(input: {
   };
 }
 
-export interface RankCheckResult {
-  keywordId: string;
-  keyword: string;
-  position: number | null;
-  url: string | null;
-  serpFeatures: string[];
-}
-
-function buildRankCheckResult(
-  input: { keywordId: string; keyword: string; targetDomain: string },
-  items: SerpLiveItem[],
-): RankCheckResult {
-  const target = input.targetDomain.toLowerCase();
-  const organicMatch = items.find((item) => {
-    if (item.type !== "organic" || item.domain == null) return false;
-    const domain = item.domain.toLowerCase();
-    return domain === target || domain.endsWith(`.${target}`);
-  });
-
-  return {
-    keywordId: input.keywordId,
-    keyword: input.keyword,
-    // rank_group = position among organic results only (what users count as
-    // "my ranking"). rank_absolute would also count SERP features (local
-    // pack, PAA, AI overviews) and reads as worse than what users see.
-    position: organicMatch
-      ? (organicMatch.rank_group ?? organicMatch.rank_absolute ?? null)
-      : null,
-    url: organicMatch?.url ?? null,
-    serpFeatures: [...new Set(items.map((item) => item.type).filter(Boolean))],
-  };
-}
-
-export async function fetchRankCheckSerp(input: {
-  keyword: string;
-  keywordId: string;
-  locationCode: number;
-  languageCode: string;
-  locationName?: string;
-  device: "desktop" | "mobile";
-  targetDomain: string;
-  depth: number;
-}): Promise<DataforseoApiResponse<RankCheckResult>> {
+/** One SERP feature block observed in a check, persisted per snapshot. */
+export async function fetchRankCheckSerp(
+  input: {
+    keyword: string;
+    keywordId: string;
+    locationCode: number;
+    languageCode: string;
+    locationName?: string;
+    device: "desktop" | "mobile";
+    targetDomain: string;
+    depth: number;
+  } & RankCheckCollectionOptions,
+): Promise<DataforseoApiResponse<RankCheckResult>> {
   const depth = clampSerpDepth(input.depth);
   const locationParams = input.locationName
     ? { location_name: input.locationName }
@@ -172,7 +137,7 @@ export async function fetchRankCheckSerp(input: {
         device: input.device,
         os: input.device === "desktop" ? "windows" : "android",
         depth,
-        ...stopCrawlOnTarget(input.targetDomain),
+        ...collectionParams(input),
       },
     ],
   );
@@ -185,10 +150,11 @@ export async function fetchRankCheckSerp(input: {
     task,
     serpSnapshotItemSchema,
   );
+  const billing = buildTaskBilling(task);
 
   return {
-    data: buildRankCheckResult(input, items),
-    billing: buildTaskBilling(task),
+    data: buildRankCheckResult(input, items, billing.costUsd),
+    billing,
   };
 }
 
@@ -207,16 +173,31 @@ export interface RankCheckTaskInput {
 
 export interface PostedRankCheckTask extends RankCheckTaskInput {
   taskId: string;
+  /** Cost DataForSEO charged for this task at post time, in USD. */
+  costUsd: number;
 }
 
-export async function postRankCheckTasks(input: {
-  tasks: RankCheckTaskInput[];
-  locationCode: number;
-  languageCode: string;
-  locationName?: string;
-  depth: number;
-  targetDomain: string;
-}): Promise<DataforseoApiResponse<PostedRankCheckTask[]>> {
+/** An entry DataForSEO refused, kept so the ledger can record why. */
+export interface RejectedRankCheckTask extends RankCheckTaskInput {
+  statusCode: number | null;
+  statusMessage: string | null;
+}
+
+export interface RankCheckTaskPostResult {
+  posted: PostedRankCheckTask[];
+  rejected: RejectedRankCheckTask[];
+}
+
+export async function postRankCheckTasks(
+  input: {
+    tasks: RankCheckTaskInput[];
+    locationCode: number;
+    languageCode: string;
+    locationName?: string;
+    depth: number;
+    targetDomain: string;
+  } & RankCheckCollectionOptions,
+): Promise<DataforseoApiResponse<RankCheckTaskPostResult>> {
   if (input.tasks.length === 0 || input.tasks.length > MAX_TASKS_PER_POST) {
     throw new AppError(
       "INTERNAL_ERROR",
@@ -242,7 +223,7 @@ export async function postRankCheckTasks(input: {
       // task_get later reports the reduced actual cost when the crawl
       // stopped early. We meter customers on the post-time amount —
       // collection-time metering is a possible future optimization.
-      ...stopCrawlOnTarget(input.targetDomain),
+      ...collectionParams(input),
       // Echoed back on the response entry and task_get; used to map a
       // DataForSEO task id back to our keyword without relying on order.
       tag: `${task.keywordId}:${task.device}`,
@@ -265,22 +246,31 @@ export async function postRankCheckTasks(input: {
     input.tasks.map((task) => [`${task.keywordId}:${task.device}`, task]),
   );
   const posted: PostedRankCheckTask[] = [];
+  const rejected: RejectedRankCheckTask[] = [];
   let costUsd = 0;
   for (const entry of response.tasks ?? []) {
-    costUsd += entry.cost ?? 0;
+    const entryCost = entry.cost ?? 0;
+    costUsd += entryCost;
     const tag: unknown = entry.data?.tag;
     const task = typeof tag === "string" ? byTag.get(tag) : undefined;
     if (entry.status_code !== 20100 || !entry.id || !task) {
       console.warn(
         `dataforseo.task_post.rejected-entry (${entry.status_code}): ${entry.status_message}`,
       );
+      if (task) {
+        rejected.push({
+          ...task,
+          statusCode: entry.status_code ?? null,
+          statusMessage: entry.status_message ?? null,
+        });
+      }
       continue;
     }
-    posted.push({ ...task, taskId: entry.id });
+    posted.push({ ...task, taskId: entry.id, costUsd: entryCost });
   }
 
   return {
-    data: posted,
+    data: { posted, rejected },
     billing: {
       path: ["v3", "serp", "google", "organic", "task_post"],
       costUsd,
@@ -289,9 +279,20 @@ export async function postRankCheckTasks(input: {
 }
 
 type RankCheckTaskOutcome =
-  | { status: "pending" }
-  | { status: "failed"; message: string }
-  | { status: "completed"; result: RankCheckResult };
+  | { status: "pending"; providerStatusCode: number | null }
+  | {
+      status: "failed";
+      message: string;
+      providerStatusCode: number | null;
+    }
+  | {
+      status: "completed";
+      result: RankCheckResult;
+      providerStatusCode: number | null;
+      /** DataForSEO returned the task but no SERP items — a terminal empty
+       *  result, not a failure and not worth retrying. */
+      isEmpty: boolean;
+    };
 
 /**
  * Collect one queued task's result. Deliberately not metered and not wrapped
@@ -300,12 +301,14 @@ type RankCheckTaskOutcome =
  * (reduced when stop_crawl_on_match ended the crawl early) — running it
  * through the metering seam would charge the customer twice.
  */
-export async function fetchRankCheckTaskResult(input: {
-  taskId: string;
-  keywordId: string;
-  keyword: string;
-  targetDomain: string;
-}): Promise<RankCheckTaskOutcome> {
+export async function fetchRankCheckTaskResult(
+  input: {
+    taskId: string;
+    keywordId: string;
+    keyword: string;
+    targetDomain: string;
+  } & RankCheckCollectionOptions,
+): Promise<RankCheckTaskOutcome> {
   const response = await dataforseoGet(
     `/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(input.taskId)}`,
   );
@@ -317,8 +320,13 @@ export async function fetchRankCheckTaskResult(input: {
     );
   }
 
+  const providerStatusCode = task.status_code ?? null;
+  // Settled cost the queue reports back. Already paid at task_post, so it is
+  // carried for the record, not re-metered.
+  const settledCostUsd = typeof task.cost === "number" ? task.cost : null;
+
   if (isTaskInProgress(task)) {
-    return { status: "pending" };
+    return { status: "pending", providerStatusCode };
   }
 
   if (task.status_code !== 20000) {
@@ -329,11 +337,14 @@ export async function fetchRankCheckTaskResult(input: {
         status: "failed",
         message:
           task.status_message || `DataForSEO task failed (${task.status_code})`,
+        providerStatusCode,
       };
     }
     return {
       status: "completed",
-      result: buildRankCheckResult(input, []),
+      result: buildRankCheckResult(input, [], settledCostUsd),
+      providerStatusCode,
+      isEmpty: true,
     };
   }
 
@@ -342,7 +353,12 @@ export async function fetchRankCheckTaskResult(input: {
     task,
     serpSnapshotItemSchema,
   );
-  return { status: "completed", result: buildRankCheckResult(input, items) };
+  return {
+    status: "completed",
+    result: buildRankCheckResult(input, items, settledCostUsd),
+    providerStatusCode,
+    isEmpty: items.length === 0,
+  };
 }
 
 export async function fetchLocalSerp(input: {

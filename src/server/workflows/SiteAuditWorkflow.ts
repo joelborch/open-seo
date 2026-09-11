@@ -25,6 +25,8 @@ interface AuditParams {
   projectId: string;
   startUrl: string;
   config: AuditConfig;
+  /** Set by the scheduler; archives the raw crawl to R2 at finalize. */
+  archive?: boolean;
 }
 
 export class SiteAuditWorkflow extends WorkflowEntrypoint<Env, AuditParams> {
@@ -39,7 +41,7 @@ export class SiteAuditWorkflow extends WorkflowEntrypoint<Env, AuditParams> {
     event: WorkflowEvent<AuditParams>,
     step: WorkflowStep,
   ) {
-    const { auditId, billingCustomer, projectId, startUrl, config } =
+    const { auditId, billingCustomer, projectId, startUrl, config, archive } =
       event.payload;
 
     try {
@@ -68,6 +70,7 @@ export class SiteAuditWorkflow extends WorkflowEntrypoint<Env, AuditParams> {
         projectId,
         startUrl,
         config,
+        archive: archive ?? false,
       });
     } catch (error) {
       console.error(`Audit ${auditId} failed:`, error);

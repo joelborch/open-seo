@@ -43,11 +43,14 @@ export type {
 export type { AdsKeywordIdeaItem } from "@/server/lib/dataforseo/google-ads";
 
 export type {
-  SerpLiveItem,
-  RankCheckResult,
   RankCheckTaskInput,
   PostedRankCheckTask,
 } from "@/server/lib/dataforseo/serp";
+
+export type {
+  SerpLiveItem,
+  RankCheckResult,
+} from "@/server/lib/dataforseo/serpItems";
 
 export type {
   BacklinksSummaryItem,

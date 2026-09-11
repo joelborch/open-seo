@@ -71,6 +71,16 @@ interface RecordBatchInput {
   discovered: Array<{ url: string; depth: number | null }>;
 }
 
+// A type alias, not an interface: only aliases get an implicit index signature,
+// which `sql.exec<T>`'s Record<string, SqlStorageValue> constraint requires.
+type ScratchpadLinkExportRow = {
+  source_page_id: string;
+  source_url: string;
+  target_url: string;
+  anchor: string | null;
+  is_nofollow: number;
+};
+
 interface BrokenLinkRow {
   sourcePageId: string;
   sourceUrl: string;
@@ -93,6 +103,12 @@ const CLEANUP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
  * budget the crawl continues — the audit just loses link-graph issues.
  */
 const LINK_STORAGE_BUDGET_BYTES = 500 * 1024 * 1024;
+/**
+ * Ceiling on one exportLinks page. RPC results are serialized into a single
+ * message capped at 1 MiB; 2,000 rows of source/target URL plus anchor text
+ * stays well under it even for long URLs.
+ */
+const EXPORT_LINKS_MAX_ROWS = 2_000;
 
 export class AuditScratchpad extends DurableObject {
   constructor(ctx: DurableObjectState, workerEnv: Env) {
@@ -315,6 +331,54 @@ export class AuditScratchpad extends DurableObject {
         : [];
 
     return { brokenLinks, orphanPages };
+  }
+
+  /**
+   * One keyset page of link edges, for the R2 crawl archive. Ordered by the
+   * primary key (source_page_id, target_url), which is also the cursor, so a
+   * retried archive step re-reads exactly the same rows in the same order.
+   *
+   * `limit` is capped at EXPORT_LINKS_MAX_ROWS: RPC results cross the DO
+   * boundary as one serialized message, and a link row is ~200 bytes of URL, so
+   * a caller asking for everything at once would blow the message limit.
+   */
+  async exportLinks(input: {
+    afterSourcePageId: string | null;
+    afterTargetUrl: string | null;
+    limit: number;
+  }): Promise<{ links: ScratchpadLinkRow[]; linkGraphComplete: boolean }> {
+    const limit = Math.min(input.limit, EXPORT_LINKS_MAX_ROWS);
+    const select = `SELECT source_page_id, source_url, target_url, anchor, is_nofollow FROM links`;
+    const order = `ORDER BY source_page_id, target_url LIMIT ?`;
+    const cursor =
+      input.afterSourcePageId !== null && input.afterTargetUrl !== null;
+    const rows = cursor
+      ? this.ctx.storage.sql.exec<ScratchpadLinkExportRow>(
+          `${select} WHERE source_page_id > ? OR (source_page_id = ? AND target_url > ?) ${order}`,
+          input.afterSourcePageId,
+          input.afterSourcePageId,
+          input.afterTargetUrl,
+          limit,
+        )
+      : this.ctx.storage.sql.exec<ScratchpadLinkExportRow>(
+          `${select} ${order}`,
+          limit,
+        );
+
+    return {
+      links: rows.toArray().map((row) => ({
+        sourcePageId: row.source_page_id,
+        sourceUrl: row.source_url,
+        targetUrl: row.target_url,
+        anchor: row.anchor,
+        isNofollow: row.is_nofollow === 1,
+      })),
+      // Same comparison runFinalizeChecks uses: past the budget the crawl
+      // stopped storing edges, so the archived graph is a partial one and the
+      // manifest must say so.
+      linkGraphComplete:
+        this.ctx.storage.sql.databaseSize < LINK_STORAGE_BUDGET_BYTES,
+    };
   }
 
   /** Wipe all state (success path, or explicit audit deletion). */

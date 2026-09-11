@@ -1,6 +1,7 @@
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
 import { AppError } from "@/server/lib/errors";
+import { emptyRankTrackingDeviceResult } from "@/shared/rank-tracking";
 import type { ComparePeriod } from "@/types/schemas/rank-tracking";
 import type {
   RankTrackingDeviceResult,
@@ -103,10 +104,10 @@ export async function getLatestResults(
         searchVolume: keyword.searchVolume,
         keywordDifficulty: keyword.keywordDifficulty,
         cpc: keyword.cpc,
-        desktop: createEmptyDeviceResult(
+        desktop: emptyRankTrackingDeviceResult(
           previousPositions.get(`${keyword.id}:desktop`) ?? null,
         ),
-        mobile: createEmptyDeviceResult(
+        mobile: emptyRankTrackingDeviceResult(
           previousPositions.get(`${keyword.id}:mobile`) ?? null,
         ),
       },
@@ -158,17 +159,6 @@ function parseSerpFeatures(raw: string | null): string[] {
   return [];
 }
 
-function createEmptyDeviceResult(
-  previousPosition: number | null,
-): RankTrackingDeviceResult {
-  return {
-    position: null,
-    previousPosition,
-    rankingUrl: null,
-    serpFeatures: [],
-  };
-}
-
 function toDeviceResult(
   snapshot: SnapshotRow,
   previousPosition: number | null,
@@ -178,5 +168,9 @@ function toDeviceResult(
     previousPosition,
     rankingUrl: snapshot.url,
     serpFeatures: parseSerpFeatures(snapshot.serpFeatures),
+    localPackPosition: snapshot.localPackPosition,
+    aioPresent: snapshot.aioPresent,
+    aioClientCited: snapshot.aioClientCited,
+    aioCitationPosition: snapshot.aioCitationPosition,
   };
 }

@@ -2,7 +2,10 @@ import { sort } from "remeda";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { ActivationRepository } from "@/server/features/activation/repositories/ActivationRepository";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
-import { getIssueTypePageCountsForAudit } from "@/server/features/audit/repositories/auditSummaryQueries";
+import {
+  getIssueTypePageCountsForAudit,
+  getRecentHealthScoresForProject,
+} from "@/server/features/audit/repositories/auditSummaryQueries";
 import { BacklinkSnapshotRepository } from "@/server/features/dashboard/repositories/BacklinkSnapshotRepository";
 import { Ga4ConnectionRepository } from "@/server/features/ga4/repositories/Ga4ConnectionRepository";
 import { GscConnectionRepository } from "@/server/features/gsc/repositories/GscConnectionRepository";
@@ -21,6 +24,8 @@ const SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // Bounds the per-config result reads on the overview path; projects rarely
 // have more than a couple of configs.
 const MAX_CONFIGS_FOR_OVERVIEW = 5;
+// Points in the audit card's health sparkline.
+const HEALTH_SPARKLINE_POINTS = 12;
 
 export type DashboardActivation = {
   domain: string | null;
@@ -50,6 +55,12 @@ export type DashboardAuditSummary = {
   status: "running" | "completed" | "failed";
   pagesCrawled: number;
   startedAt: string;
+  /** Latest Site Health score, or null until an audit scores one. */
+  healthScore: number | null;
+  /** Change against the audit scored before it; null without two scores. */
+  healthScoreDelta: number | null;
+  /** Up to 12 scores, oldest first, for the card's sparkline. */
+  healthHistory: number[];
   // Top issue types by severity then affected-page count, for the card's list.
   topIssues: {
     issueType: string;
@@ -169,7 +180,10 @@ async function getAuditSummary(
   const audit = await AuditRepository.getLatestAuditForProject(projectId);
   if (!audit) return null;
 
-  const typeRows = await getIssueTypePageCountsForAudit(audit.id);
+  const [typeRows, scores] = await Promise.all([
+    getIssueTypePageCountsForAudit(audit.id),
+    getRecentHealthScoresForProject(projectId, HEALTH_SPARKLINE_POINTS),
+  ]);
 
   const severityRank = { critical: 0, warning: 1, info: 2 };
   const sorted = sort(
@@ -182,10 +196,20 @@ async function getAuditSummary(
       severityRank[a.severity] - severityRank[b.severity] || b.count - a.count,
   );
 
+  // Newest first out of the query: [0] is the headline, [1] the baseline.
+  const [latestScore, previousScore] = scores;
   return {
     status: audit.status,
     pagesCrawled: audit.pagesCrawled,
     startedAt: audit.startedAt,
+    healthScore: latestScore ?? null,
+    healthScoreDelta:
+      latestScore === undefined || previousScore === undefined
+        ? null
+        : latestScore - previousScore,
+    // Oldest first for the sparkline, without mutating (or needing toReversed,
+    // which is past this project's TS lib target).
+    healthHistory: scores.map((_, index) => scores[scores.length - 1 - index]),
     topIssues: sorted.slice(0, 3),
     totalIssueTypes: sorted.length,
   };

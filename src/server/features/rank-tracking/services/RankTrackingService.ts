@@ -30,6 +30,7 @@ import {
   resolveMarket,
 } from "@/shared/keyword-locations";
 import { getLatestResults } from "./rankTrackingResults";
+import { retrieveRankCheckRun } from "./rankCheckRetrieval";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
 import { RankTrackingKeywordService } from "./RankTrackingKeywordService";
 
@@ -47,6 +48,8 @@ async function createConfig(input: {
   devices?: RankTrackingConfig["devices"];
   serpDepth: number;
   scheduleInterval?: RankTrackingConfig["scheduleInterval"];
+  trackCompetitors?: boolean;
+  trackAiOverview?: boolean;
 }) {
   const normalizedDomain = normalizeDomain(input.domain);
 
@@ -101,6 +104,8 @@ async function createConfig(input: {
       serpDepth: input.serpDepth,
       scheduleInterval,
       nextCheckAt,
+      trackCompetitors: input.trackCompetitors ?? false,
+      trackAiOverview: input.trackAiOverview ?? false,
       // Drop any stale skip reason from before it was archived so the
       // re-added domain doesn't surface an outdated warning.
       lastSkipReason: null,
@@ -121,8 +126,8 @@ async function createConfig(input: {
     serpDepth: input.serpDepth,
     scheduleInterval,
     nextCheckAt,
-    trackCompetitors: false,
-    trackAiOverview: false,
+    trackCompetitors: input.trackCompetitors ?? false,
+    trackAiOverview: input.trackAiOverview ?? false,
     isActive: true,
     lastCheckedAt: null,
     lastSkipReason: null,
@@ -145,6 +150,8 @@ async function updateConfig(
     devices?: RankTrackingConfig["devices"];
     serpDepth?: number;
     scheduleInterval?: RankTrackingConfig["scheduleInterval"];
+    trackCompetitors?: boolean;
+    trackAiOverview?: boolean;
     isActive?: boolean;
   },
 ) {
@@ -160,6 +167,10 @@ async function updateConfig(
     updates.locationName = input.locationName;
   if (input.devices !== undefined) updates.devices = input.devices;
   if (input.serpDepth !== undefined) updates.serpDepth = input.serpDepth;
+  if (input.trackCompetitors !== undefined)
+    updates.trackCompetitors = input.trackCompetitors;
+  if (input.trackAiOverview !== undefined)
+    updates.trackAiOverview = input.trackAiOverview;
   if (input.isActive !== undefined) updates.isActive = input.isActive;
 
   if (input.scheduleInterval !== undefined) {
@@ -228,6 +239,16 @@ async function triggerCheck(input: {
     trigger: "manual",
     workflowStartErrorMessage: "Failed to start rank check workflow",
   });
+}
+
+/** Recent runs for a config, with what each one spent. */
+async function getRunHistory(
+  configId: string,
+  projectId: string,
+  limit: number,
+) {
+  await getValidatedConfig(configId, projectId);
+  return RankTrackingRepository.getRunHistoryForConfig(configId, limit);
 }
 
 async function getLatestRun(configId: string, projectId: string) {
@@ -387,7 +408,9 @@ export const RankTrackingService = {
   addKeywords: RankTrackingKeywordService.addKeywords,
   removeKeywords: RankTrackingKeywordService.removeKeywords,
   triggerCheck,
+  retrieveRun: retrieveRankCheckRun,
   getLatestRun,
+  getRunHistory,
   estimateCost: RankTrackingKeywordService.estimateCost,
   refreshKeywordMetrics,
   getConfigs,

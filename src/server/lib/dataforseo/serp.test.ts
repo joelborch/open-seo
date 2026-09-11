@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 vi.mock("@/server/lib/runtime-env", () => ({
   getRequiredEnvValue: vi.fn(async () => "test-api-key"),
@@ -6,6 +7,7 @@ vi.mock("@/server/lib/runtime-env", () => ({
 
 import {
   fetchLiveSerp,
+  fetchRankCheckSerp,
   fetchRankCheckTaskResult,
   postRankCheckTasks,
 } from "@/server/lib/dataforseo/serp";
@@ -17,6 +19,136 @@ function parseDataforseoRequestBody(init: RequestInit | undefined): unknown {
   }
   return JSON.parse(body) as unknown;
 }
+
+/** The posted task array, narrowed so per-key assertions need no cast. */
+const requestTasksSchema = z.array(z.record(z.string(), z.unknown()));
+
+function parseDataforseoRequestTasks(init: RequestInit | undefined) {
+  return requestTasksSchema.parse(parseDataforseoRequestBody(init));
+}
+
+// Trimmed from a real `/v3/serp/google/organic/live/advanced` receipt captured
+// with load_async_ai_overview (runtime/seo-yolo, advanced-dermatology
+// collection checkpoint, keyword "laser treatment for acne scars"): one
+// ai_overview block with element-level references/links plus block-level
+// references, three local_pack rows collapsed to the matching one, and two
+// organic results. Long text/markdown fields are dropped; every key name and
+// nesting level is as DataForSEO returned it.
+const ADVANCED_SERP_ITEMS = [
+  {
+    type: "ai_overview",
+    rank_group: 1,
+    rank_absolute: 1,
+    asynchronous_ai_overview: true,
+    items: [
+      {
+        type: "ai_overview_element",
+        title: null,
+        text: "Laser treatment uses focused light and heat…",
+        images: null,
+        links: null,
+        references: [
+          {
+            type: "ai_overview_reference",
+            domain: "www.healthline.com",
+            source: "Healthline",
+            title: "Laser Treatment for Acne Scars",
+            url: "https://www.healthline.com/health/beauty-skin-care/laser-treatment-for-acne-scars",
+          },
+        ],
+      },
+      {
+        type: "ai_overview_element",
+        title: "How It Works",
+        text: "Ablative lasers remove thin layers of skin…",
+        images: null,
+        links: [
+          {
+            type: "link_element",
+            title: "Chicago Cosmetic Surgery & Dermatology",
+            url: "https://www.chicagodermatology.co/",
+            domain: "www.chicagodermatology.co",
+            description: null,
+          },
+        ],
+        references: [
+          {
+            type: "ai_overview_reference",
+            domain: "clderm.com",
+            source: "clderm.com",
+            title: "Which Laser Procedures Work Best for Acne Scars?",
+            url: "https://clderm.com/which-laser-procedures-work-best-for-acne-scars",
+          },
+        ],
+      },
+    ],
+    references: [
+      {
+        type: "ai_overview_reference",
+        domain: "www.asds.net",
+        source: "American Society for Dermatologic Surgery",
+        title: "Laser Resurfacing for Acne Scars",
+        url: "https://www.asds.net/skin-experts/skin-treatments/laser-resurfacing",
+      },
+    ],
+  },
+  {
+    type: "local_pack",
+    rank_group: 2,
+    rank_absolute: 3,
+    title: "Chicago Cosmetic Surgery & Dermatology",
+    domain: "www.chicagodermatology.co",
+    url: "http://www.chicagodermatology.co/",
+    phone: "(312) 245-9965",
+  },
+  {
+    type: "organic",
+    rank_group: 1,
+    rank_absolute: 6,
+    domain: "www.healthline.com",
+    url: "https://www.healthline.com/health/beauty-skin-care/laser-treatment-for-acne-scars",
+    links: null,
+  },
+  {
+    type: "organic",
+    rank_group: 2,
+    rank_absolute: 7,
+    domain: "www.chicagodermatology.co",
+    url: "https://www.chicagodermatology.co/treatments/acne-scars",
+    links: null,
+  },
+];
+
+function stubLiveAdvancedResponse(items: unknown[]) {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+    Response.json({
+      status_code: 20000,
+      tasks: [
+        {
+          id: "task-a",
+          status_code: 20000,
+          status_message: "Ok.",
+          cost: 0.004,
+          path: ["v3", "serp", "google", "organic", "live", "advanced"],
+          result_count: 1,
+          result: [{ items }],
+        },
+      ],
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+const rankCheckInput = {
+  keyword: "laser treatment for acne scars",
+  keywordId: "kw-1",
+  locationCode: 2840,
+  languageCode: "en",
+  device: "desktop" as const,
+  targetDomain: "chicagodermatology.co",
+  depth: 20,
+};
 
 describe("live SERP", () => {
   // 40102 is the documented "No Search Results." code (40501 is "Invalid
@@ -52,6 +184,85 @@ describe("live SERP", () => {
       data: [],
       billing: { costUsd: 0.002 },
     });
+  });
+});
+
+describe("rank check SERP detail", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads organic rank, local pack rank, AI Overview citation and per-feature detail", async () => {
+    stubLiveAdvancedResponse(ADVANCED_SERP_ITEMS);
+
+    const { data } = await fetchRankCheckSerp({
+      ...rankCheckInput,
+      trackCompetitors: true,
+      trackAiOverview: true,
+    });
+
+    expect(data).toEqual({
+      keywordId: "kw-1",
+      keyword: "laser treatment for acne scars",
+      position: 2,
+      rankAbsolute: 7,
+      url: "https://www.chicagodermatology.co/treatments/acne-scars",
+      localPackPosition: 2,
+      aioPresent: true,
+      aioClientCited: true,
+      // Cited hosts in Google's order, de-duplicated: healthline (element 1
+      // reference), clderm (element 2 reference), the client (element 2 link),
+      // then the block-level asds reference.
+      aioCitationPosition: 3,
+      serpFeatures: ["ai_overview", "local_pack", "organic"],
+      features: [
+        { featureType: "ai_overview", rankAbsolute: 1, clientPresent: true },
+        { featureType: "local_pack", rankAbsolute: 3, clientPresent: true },
+        { featureType: "organic", rankAbsolute: 6, clientPresent: true },
+      ],
+      providerCostUsd: 0.004,
+    });
+  });
+
+  it("leaves AI Overview columns null when the config didn't pay to load the block", async () => {
+    stubLiveAdvancedResponse(ADVANCED_SERP_ITEMS);
+
+    const { data } = await fetchRankCheckSerp(rankCheckInput);
+
+    expect(data).toMatchObject({
+      aioPresent: null,
+      aioClientCited: null,
+      aioCitationPosition: null,
+    });
+    // The block is still reported as a feature that was on the page.
+    expect(data.serpFeatures).toContain("ai_overview");
+  });
+
+  it("sends load_async_ai_overview and the early-stop hint only when they apply", async () => {
+    const withOptIns = stubLiveAdvancedResponse(ADVANCED_SERP_ITEMS);
+    await fetchRankCheckSerp({
+      ...rankCheckInput,
+      trackCompetitors: true,
+      trackAiOverview: true,
+    });
+    const [optedIn] = parseDataforseoRequestTasks(
+      withOptIns.mock.calls[0]?.[1],
+    );
+    expect(optedIn).toMatchObject({ load_async_ai_overview: true });
+    // Competitor tracking needs the whole SERP, so the crawl must not stop at
+    // the client's own listing.
+    expect(optedIn).not.toHaveProperty("stop_crawl_on_match");
+
+    const defaults = stubLiveAdvancedResponse(ADVANCED_SERP_ITEMS);
+    await fetchRankCheckSerp(rankCheckInput);
+    const [payload] = parseDataforseoRequestTasks(defaults.mock.calls[0]?.[1]);
+    expect(payload).toMatchObject({
+      stop_crawl_on_match: [
+        { match_value: "chicagodermatology.co", match_type: "with_subdomains" },
+      ],
+      find_targets_in: ["organic"],
+    });
+    expect(payload).not.toHaveProperty("load_async_ai_overview");
   });
 });
 
@@ -121,18 +332,30 @@ describe("rank check task queue", () => {
     expect(
       parseDataforseoRequestBody(fetchMock.mock.calls[0]?.[1]),
     ).toMatchObject([stopCrawl, stopCrawl, stopCrawl]);
-    expect(result.data).toEqual([
+    expect(result.data.posted).toEqual([
       {
         keyword: "alpha",
         keywordId: "kw-1",
         device: "desktop",
         taskId: "task-a",
+        costUsd: 0.0006,
       },
       {
         keyword: "alpha",
         keywordId: "kw-1",
         device: "mobile",
         taskId: "task-b",
+        costUsd: 0.0006,
+      },
+    ]);
+    // Refused entries are reported so the task ledger can record why.
+    expect(result.data.rejected).toEqual([
+      {
+        keyword: "beta",
+        keywordId: "kw-2",
+        device: "desktop",
+        statusCode: 40006,
+        statusMessage: "Task Limit Exceeded",
       },
     ]);
     // The rejected entry's cost is still metered: a charge is a charge.
@@ -162,7 +385,7 @@ describe("rank check task queue", () => {
       targetDomain: "example.com",
     });
 
-    expect(outcome).toEqual({ status: "pending" });
+    expect(outcome).toEqual({ status: "pending", providerStatusCode: 40602 });
   });
 
   it("parses a completed queued task into a rank check result", async () => {
@@ -203,12 +426,23 @@ describe("rank check task queue", () => {
 
     expect(outcome).toEqual({
       status: "completed",
+      providerStatusCode: 20000,
+      isEmpty: false,
       result: {
         keywordId: "kw-1",
         keyword: "alpha",
         position: 3,
+        rankAbsolute: 4,
         url: "https://www.example.com/page",
+        localPackPosition: null,
+        aioPresent: null,
+        aioClientCited: null,
+        aioCitationPosition: null,
         serpFeatures: ["organic"],
+        features: [
+          { featureType: "organic", rankAbsolute: 4, clientPresent: true },
+        ],
+        providerCostUsd: 0,
       },
     });
   });

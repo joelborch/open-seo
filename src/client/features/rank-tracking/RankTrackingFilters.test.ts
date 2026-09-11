@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyRankTrackingDeviceResult } from "@/shared/rank-tracking";
 import type { RankTrackingRow } from "@/types/schemas/rank-tracking";
 import {
   applyDomainListFilters,
@@ -36,18 +37,8 @@ function makeRow(
     searchVolume: metrics.volume ?? null,
     keywordDifficulty: metrics.kd ?? null,
     cpc: metrics.cpc ?? null,
-    desktop: {
-      position: desktopPosition,
-      previousPosition: null,
-      rankingUrl: null,
-      serpFeatures: [],
-    },
-    mobile: {
-      position: mobilePosition,
-      previousPosition: null,
-      rankingUrl: null,
-      serpFeatures: [],
-    },
+    desktop: { ...emptyRankTrackingDeviceResult(), position: desktopPosition },
+    mobile: { ...emptyRankTrackingDeviceResult(), position: mobilePosition },
   };
 }
 

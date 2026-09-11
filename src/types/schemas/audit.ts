@@ -52,3 +52,41 @@ export const auditSearchSchema = z.object({
   auditId: z.string().optional().catch(undefined),
   tab: z.enum(auditTabs).catch("issues").default("issues"),
 });
+
+// ─── Scheduled crawls ───────────────────────────────────────────────────────
+
+// Tier limits are enforced server-side (AuditScheduleService.assertWithinTier);
+// this bound is the technical ceiling shared with the manual launch form.
+const scheduleMaxPages = z
+  .number()
+  .int()
+  .min(MIN_AUDIT_PAGES)
+  .max(PAID_MAX_AUDIT_PAGES);
+const hourUtc = z.number().int().min(0).max(23);
+
+export const getAuditScheduleSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+export const upsertAuditScheduleSchema = z.object({
+  projectId: z.string().min(1),
+  startUrl: z.string().min(1, "URL is required").max(2048),
+  quickEnabled: z.boolean(),
+  quickMaxPages: scheduleMaxPages,
+  quickHourUtc: hourUtc,
+  deepEnabled: z.boolean(),
+  deepMaxPages: scheduleMaxPages,
+  // 0 = Sunday, matching JS `Date#getUTCDay`.
+  deepDowUtc: z.number().int().min(0).max(6),
+  deepHourUtc: hourUtc,
+  deepLighthouse: z.boolean(),
+});
+
+export const setAuditScheduleActiveSchema = z.object({
+  projectId: z.string().min(1),
+  isActive: z.boolean(),
+});
+
+export const getAuditScheduleHistorySchema = z.object({
+  projectId: z.string().min(1),
+});

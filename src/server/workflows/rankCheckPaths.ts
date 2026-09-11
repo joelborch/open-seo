@@ -1,18 +1,25 @@
 import type { WorkflowStep } from "cloudflare:workers";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import {
+  persistRankCheckResults,
+  type RankCheckResultWithDevice,
+} from "@/server/features/rank-tracking/services/rankSnapshotWriter";
+import {
   fetchRankCheckTaskResult,
   MAX_TASKS_PER_POST,
 } from "@/server/lib/dataforseo";
 import type {
   createDataforseoClient,
   PostedRankCheckTask,
-  RankCheckResult,
   RankCheckTaskInput,
 } from "@/server/lib/dataforseo";
 import { AppError } from "@/server/lib/errors";
 import type { RankTrackingConfig } from "@/types/schemas/rank-tracking";
-import { KEYWORDS_PER_BATCH } from "@/shared/rank-tracking";
+import {
+  costPerSerpAtDepth,
+  KEYWORDS_PER_BATCH,
+  usdToMicros,
+} from "@/shared/rank-tracking";
 import { pgStep } from "@/server/workflows/pgStep";
 
 const SINGLE_ATTEMPT_STEP_CONFIG = {
@@ -20,26 +27,10 @@ const SINGLE_ATTEMPT_STEP_CONFIG = {
   timeout: "2 minutes" as const,
 };
 
-type KeywordEntry = { id: string; keyword: string };
-type RankCheckResultWithDevice = RankCheckResult & {
-  device: "desktop" | "mobile";
-};
+/** DataForSEO endpoint each ledger row accounts for. */
+const TASK_POST_ENDPOINT = "/v3/serp/google/organic/task_post";
 
-function mapResultsToSnapshotRows(
-  runId: string,
-  results: RankCheckResultWithDevice[],
-) {
-  return results.map((r) => ({
-    runId,
-    trackingKeywordId: r.keywordId,
-    keyword: r.keyword,
-    device: r.device,
-    position: r.position,
-    url: r.url,
-    serpFeatures:
-      r.serpFeatures.length > 0 ? JSON.stringify(r.serpFeatures) : null,
-  }));
-}
+type KeywordEntry = { id: string; keyword: string };
 
 interface CheckContext {
   client: ReturnType<typeof createDataforseoClient>;
@@ -50,6 +41,9 @@ interface CheckContext {
   locationCode: number;
   languageCode: string;
   locationName?: string;
+  /** Config opt-ins; both change what each request buys. */
+  trackCompetitors: boolean;
+  trackAiOverview: boolean;
   runId: string;
 }
 
@@ -69,6 +63,14 @@ function expandToTaskInputs(
   );
 }
 
+/** What one live or queued sub-batch cost and produced. */
+interface BatchOutcome {
+  /** Snapshots written. */
+  written: number;
+  /** Provider spend, in micro-dollars, as reported on each response. */
+  costMicros: number;
+}
+
 // ---------------------------------------------------------------------------
 // Step bodies. Each runs inside a single step.do: inputs are its parameters,
 // the return value is what the workflow engine persists and replays. They must
@@ -78,12 +80,16 @@ function expandToTaskInputs(
 /**
  * Check keyword/device pairs against the live endpoint and persist snapshots.
  * Per-call failures are logged and skipped (the metered client already charged
- * or refused each call individually). Returns the snapshot count written.
+ * or refused each call individually).
+ *
+ * The live path writes no ledger rows: there is no queued task to reconcile,
+ * and each call's charge is known the moment it returns — so the run-level
+ * spend rollup is the whole accounting story here.
  */
 async function checkBatchLive(
   ctx: CheckContext,
   tasks: RankCheckTaskInput[],
-): Promise<number> {
+): Promise<BatchOutcome> {
   const settled = await Promise.allSettled(
     tasks.map((task) =>
       ctx.client.serp
@@ -96,6 +102,8 @@ async function checkBatchLive(
           device: task.device,
           targetDomain: ctx.domain,
           depth: ctx.serpDepth,
+          trackCompetitors: ctx.trackCompetitors,
+          trackAiOverview: ctx.trackAiOverview,
         })
         .then((r) => ({ ...r, device: task.device })),
     ),
@@ -118,44 +126,51 @@ async function checkBatchLive(
       `[rank-check] ${ctx.runId} live call failed (${code}) keyword="${task.keyword}" device=${task.device}: ${message}`,
     );
   });
-  if (results.length > 0) {
-    await RankTrackingRepository.insertSnapshots(
-      mapResultsToSnapshotRows(ctx.runId, results),
-    );
-  }
-  return results.length;
+
+  const costMicros = results.reduce(
+    (total, result) => total + usdToMicros(result.providerCostUsd ?? 0),
+    0,
+  );
+  if (results.length === 0) return { written: 0, costMicros };
+
+  await persistRankCheckResults(ctx.runId, results);
+  return { written: results.length, costMicros };
 }
 
 /**
  * Check keywords via Live API, parallel devices per keyword, real-time progress.
  * Snapshots are written incrementally after each batch so partial results
  * survive batch failures. ~6s per keyword batch.
- * Billing is handled per-call by the metered client.
+ * Billing is handled per-call by the metered client; the returned micros are
+ * what the run records as spent.
  */
 export async function runLiveCheck(
   step: WorkflowStep,
   ctx: CheckContext,
-): Promise<void> {
+): Promise<number> {
+  let costMicros = 0;
   for (let i = 0; i < ctx.keywords.length; i += KEYWORDS_PER_BATCH) {
     const keywordBatch = ctx.keywords.slice(i, i + KEYWORDS_PER_BATCH);
     const batchTasks = expandToTaskInputs(keywordBatch, ctx.devices);
     const batchIndex = Math.floor(i / KEYWORDS_PER_BATCH);
     const keywordsChecked = i + keywordBatch.length;
 
-    await pgStep(
+    const outcome = await pgStep(
       step,
       `live-batch-${batchIndex}`,
       SINGLE_ATTEMPT_STEP_CONFIG,
       async () => {
-        const written = await checkBatchLive(ctx, batchTasks);
+        const batchOutcome = await checkBatchLive(ctx, batchTasks);
         // Progress for the UI; finalize recounts from the DB anyway.
         await RankTrackingRepository.updateRun(ctx.runId, {
           keywordsChecked,
         });
-        return written;
+        return batchOutcome;
       },
     );
+    costMicros += outcome.costMicros;
   }
+  return costMicros;
 }
 
 // Poll cadence for queued tasks. Standard-priority tasks complete in ~5
@@ -197,8 +212,9 @@ interface CollectRoundOutcome {
 
 /**
  * Fetch results for queued tasks (one free task_get each), persist completed
- * snapshots, and update run progress. Transient task_get failures stay
- * pending for the next round.
+ * snapshots, settle each task's ledger row, and update run progress. Transient
+ * task_get failures stay pending for the next round with their ledger row
+ * untouched, so they remain collectable.
  */
 async function collectQueuedRound(
   ctx: CheckContext,
@@ -207,6 +223,9 @@ async function collectQueuedRound(
   const completed: RankCheckResultWithDevice[] = [];
   const stillPending: PostedRankCheckTask[] = [];
   const failed: PostedRankCheckTask[] = [];
+  const ledgerUpdates: Parameters<
+    typeof RankTrackingRepository.markRankCheckTasksCollected
+  >[0] = [];
 
   for (let i = 0; i < tasks.length; i += TASK_GET_CONCURRENCY) {
     const chunk = tasks.slice(i, i + TASK_GET_CONCURRENCY);
@@ -217,6 +236,8 @@ async function collectQueuedRound(
           keywordId: task.keywordId,
           keyword: task.keyword,
           targetDomain: ctx.domain,
+          trackCompetitors: ctx.trackCompetitors,
+          trackAiOverview: ctx.trackAiOverview,
         }),
       ),
     );
@@ -236,23 +257,30 @@ async function collectQueuedRound(
           `[rank-check] ${ctx.runId} task ${task.taskId} failed: ${result.value.message}`,
         );
         failed.push(task);
+        ledgerUpdates.push({
+          providerTaskId: task.taskId,
+          status: "failed",
+          providerStatusCode: result.value.providerStatusCode,
+          providerStatusMessage: result.value.message,
+        });
       } else {
         completed.push({ ...result.value.result, device: task.device });
+        ledgerUpdates.push({
+          providerTaskId: task.taskId,
+          status: result.value.isEmpty ? "terminal_empty" : "retrieved",
+          providerStatusCode: result.value.providerStatusCode,
+        });
       }
     });
   }
 
   if (completed.length > 0) {
-    await RankTrackingRepository.insertSnapshots(
-      mapResultsToSnapshotRows(ctx.runId, completed),
-    );
+    const keywordsChecked = await persistRankCheckResults(ctx.runId, completed);
     // Progress for the UI; finalize recounts from the DB anyway.
-    const snapshots = await RankTrackingRepository.getSnapshotsForRun(
-      ctx.runId,
-    );
-    await RankTrackingRepository.updateRun(ctx.runId, {
-      keywordsChecked: new Set(snapshots.map((s) => s.trackingKeywordId)).size,
-    });
+    await RankTrackingRepository.updateRun(ctx.runId, { keywordsChecked });
+  }
+  if (ledgerUpdates.length > 0) {
+    await RankTrackingRepository.markRankCheckTasksCollected(ledgerUpdates);
   }
 
   return { collected: completed.length, stillPending, failed };
@@ -268,6 +296,89 @@ export interface QueuedCheckStats {
   fallbackTasks: number;
   /** Fallback tasks that produced a snapshot. */
   fallbackChecked: number;
+  /** Tasks whose submission outcome is unknown — never re-posted, and the
+   *  reason a run's spend is reported as a floor. */
+  submissionUnknown: number;
+  /** Live-fallback spend, in micro-dollars. Queued spend lives in the ledger. */
+  fallbackCostMicros: number;
+}
+
+/** Reserve ledger rows for a chunk, then post it. Order matters: the rows must
+ *  exist before the request so a crash can't lose the fact that we may have
+ *  bought something. */
+async function reserveAndPostChunk(
+  ctx: CheckContext,
+  chunk: RankCheckTaskInput[],
+): Promise<PostedRankCheckTask[]> {
+  const reservedCostMicros = usdToMicros(
+    costPerSerpAtDepth(ctx.serpDepth, "queued", ctx.trackAiOverview),
+  );
+  await RankTrackingRepository.reserveRankCheckTasks(
+    chunk.map((task) => ({
+      id: crypto.randomUUID(),
+      runId: ctx.runId,
+      trackingKeywordId: task.keywordId,
+      device: task.device,
+      tag: `${task.keywordId}:${task.device}`,
+      endpoint: TASK_POST_ENDPOINT,
+      status: "reserved" as const,
+      reservedCostMicros,
+    })),
+  );
+
+  let result: Awaited<ReturnType<typeof ctx.client.serp.rankCheckTaskPost>>;
+  try {
+    result = await ctx.client.serp.rankCheckTaskPost({
+      tasks: chunk,
+      locationCode: ctx.locationCode,
+      languageCode: ctx.languageCode,
+      locationName: ctx.locationName,
+      depth: ctx.serpDepth,
+      targetDomain: ctx.domain,
+      trackCompetitors: ctx.trackCompetitors,
+      trackAiOverview: ctx.trackAiOverview,
+    });
+  } catch (error) {
+    // The request may already have reached DataForSEO, so these pairs are not
+    // re-postable and not safe to re-buy on the live endpoint — park them as
+    // submission_unknown for a later reconciliation pass and let the run's
+    // cost be reported as a minimum.
+    await RankTrackingRepository.markRankCheckTasksOutcome(
+      ctx.runId,
+      chunk.map((task) => ({
+        trackingKeywordId: task.keywordId,
+        device: task.device,
+        status: "submission_unknown" as const,
+        providerStatusMessage:
+          error instanceof Error ? error.message.slice(0, 500) : null,
+      })),
+    );
+    throw error;
+  }
+
+  await RankTrackingRepository.markRankCheckTasksSubmitted(
+    ctx.runId,
+    result.posted.map((task) => ({
+      trackingKeywordId: task.keywordId,
+      device: task.device,
+      providerTaskId: task.taskId,
+      actualCostMicros: usdToMicros(task.costUsd),
+    })),
+  );
+  if (result.rejected.length > 0) {
+    await RankTrackingRepository.markRankCheckTasksOutcome(
+      ctx.runId,
+      result.rejected.map((task) => ({
+        trackingKeywordId: task.keywordId,
+        device: task.device,
+        status: "failed" as const,
+        providerStatusCode: task.statusCode,
+        providerStatusMessage: task.statusMessage,
+      })),
+    );
+  }
+
+  return result.posted;
 }
 
 /**
@@ -276,7 +387,8 @@ export interface QueuedCheckStats {
  * ~15 minutes, writing snapshots incrementally as tasks complete. Anything
  * still unfinished after the polling window — plus tasks DataForSEO rejected
  * or failed — gets one shot at the live endpoint so a run never hangs on a
- * stuck queue. Billing happens at task_post (and per live-fallback call).
+ * stuck queue. Billing happens at task_post (and per live-fallback call), and
+ * every task's reservation and settled charge is recorded in rank_check_tasks.
  */
 export async function runQueuedCheck(
   step: WorkflowStep,
@@ -286,10 +398,10 @@ export async function runQueuedCheck(
 
   // Post all tasks to the queue, <=100 per request, one metered step each.
   // A failed chunk must not abort the run — earlier chunks were already
-  // charged at DataForSEO, so their results have to be collected. The failed
-  // chunk's pairs go to the live fallback instead.
+  // charged at DataForSEO, so their results have to be collected.
   let pending: PostedRankCheckTask[] = [];
   const fallback: RankCheckTaskInput[] = [];
+  let submissionUnknown = 0;
   for (let i = 0; i < taskInputs.length; i += MAX_TASKS_PER_POST) {
     const chunk = taskInputs.slice(i, i + MAX_TASKS_PER_POST);
     const postIndex = Math.floor(i / MAX_TASKS_PER_POST);
@@ -299,22 +411,17 @@ export async function runQueuedCheck(
         step,
         `post-tasks-${postIndex}`,
         SINGLE_ATTEMPT_STEP_CONFIG,
-        async () =>
-          ctx.client.serp.rankCheckTaskPost({
-            tasks: chunk,
-            locationCode: ctx.locationCode,
-            languageCode: ctx.languageCode,
-            locationName: ctx.locationName,
-            depth: ctx.serpDepth,
-            targetDomain: ctx.domain,
-          }),
+        () => reserveAndPostChunk(ctx, chunk),
       );
     } catch (error) {
+      // Deliberately NOT added to the live fallback: the chunk's ledger rows
+      // are submission_unknown, and buying the same pairs again could be a
+      // second charge for results DataForSEO may already be holding.
       console.warn(
         `[rank-check] ${ctx.runId} post-tasks-${postIndex} failed:`,
         error,
       );
-      fallback.push(...chunk);
+      submissionUnknown += chunk.length;
       continue;
     }
     pending.push(...posted);
@@ -333,6 +440,8 @@ export async function runQueuedCheck(
     queueCollected: 0,
     fallbackTasks: 0,
     fallbackChecked: 0,
+    submissionUnknown,
+    fallbackCostMicros: 0,
   };
 
   // Poll until everything is collected or the ~15 minute window closes. A
@@ -386,12 +495,14 @@ export async function runQueuedCheck(
     const batch = stragglers.slice(i, i + KEYWORDS_PER_BATCH);
     const batchIndex = Math.floor(i / KEYWORDS_PER_BATCH);
 
-    stats.fallbackChecked += await pgStep(
+    const outcome = await pgStep(
       step,
       `fallback-batch-${batchIndex}`,
       SINGLE_ATTEMPT_STEP_CONFIG,
       () => checkBatchLive(ctx, batch),
     );
+    stats.fallbackChecked += outcome.written;
+    stats.fallbackCostMicros += outcome.costMicros;
   }
 
   return stats;
