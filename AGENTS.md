@@ -23,3 +23,20 @@ Do not mine an entire session for papercuts or start a broad cleanup unless the 
 After a merge-ready or other code review verifies a finding, use `maintain-greptile-rules` only when the finding exposes a recurring or high-risk repository invariant that existing `.greptile/` context and automated checks do not capture. Do not promote one-off bugs or preferences into permanent review rules.
 
 Changes to `.greptile/**`, `AGENTS.md`, `CLAUDE.md`, `.agents/skills/**`, and `.github/**` alter the review control plane and must receive explicit maintainer review. CODEOWNERS requests that review; where repository settings allow, enable GitHub's requirement for code-owner approval. Repository-specific rules live in `.greptile/`; maintainers should configure or retain a minimal org-enforced Greptile baseline for external-contribution, secret, authentication, billing, CI, and rule-tampering risks. Agents should report an unverified or missing baseline and must not mutate dashboard or organization rules without explicit user authorization.
+
+## Verify
+
+```bash
+npm test          # vitest run — unit tests colocated as src/**/*.test.ts
+npm run ci:check  # prettier --check, knip, tsc --noEmit (app + badseo), oxlint --type-aware, sync-plugin-skills
+npm run test:e2e  # playwright, specs in e2e/
+```
+
+Stack: TanStack Start on Vite + Cloudflare Workers, Drizzle over D1/Postgres, Tailwind 4,
+Vitest, Playwright 1.59, oxlint, pnpm 10.30.1 (from `package.json`).
+
+## Ask before
+
+`npm run deploy` (runs `db:migrate:prod`, i.e. `wrangler d1 migrations apply DB --remote`),
+`deploy:postgres`, `deploy:preview`, `destroy:preview`, `gdpr:erase-user`, and
+`cleanup:default-projects:d1` all mutate live infrastructure or data.
