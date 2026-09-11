@@ -1,4 +1,5 @@
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
+import { resolveBrandTerms } from "@/server/features/rank-tracking/services/brandTerms";
 import {
   persistRankCheckResults,
   type RankCheckResultWithDevice,
@@ -80,6 +81,15 @@ export async function retrieveRankCheckRun(input: {
     ),
   );
 
+  // One read pair for the whole retrieval, not one per task — the terms are a
+  // property of the project, and only the AI Overview check reads them.
+  const brandTerms = config.trackAiOverview
+    ? await resolveBrandTerms({
+        projectId: input.projectId,
+        domain: config.domain,
+      })
+    : [];
+
   const batch = outstanding.slice(0, MAX_TASK_GETS);
   let stillPending = outstanding.length - batch.length;
   let failed = 0;
@@ -105,6 +115,7 @@ export async function retrieveRankCheckRun(input: {
           targetDomain: config.domain,
           trackCompetitors: config.trackCompetitors,
           trackAiOverview: config.trackAiOverview,
+          brandTerms,
         });
       }),
     );

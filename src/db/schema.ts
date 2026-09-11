@@ -98,6 +98,7 @@ export const {
   auditRunIssueCounts,
   rankCheckTasks,
   rankSnapshotFeatures,
+  rankSnapshotAioCitations,
   mapsGridLocations,
   mapsGridLocationMatchTerms,
   mapsGridConfigs,

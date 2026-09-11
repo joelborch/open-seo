@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getSnapshotsBeforeDate: vi.fn(),
   getLatestRunForConfig: vi.fn(),
   getEarliestSnapshotsForKeywords: vi.fn(),
+  getAioCitationsForSnapshots: vi.fn(),
 }));
 
 vi.mock(
@@ -22,6 +23,7 @@ describe("getLatestResults", () => {
     mocks.getLatestSnapshotsForKeywords.mockResolvedValue([]);
     mocks.getSnapshotsBeforeDate.mockResolvedValue([]);
     mocks.getEarliestSnapshotsForKeywords.mockResolvedValue([]);
+    mocks.getAioCitationsForSnapshots.mockResolvedValue([]);
   });
 
   it("keeps snapshot freshness when a newer run fails before writing snapshots", async () => {

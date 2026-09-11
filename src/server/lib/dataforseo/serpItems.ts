@@ -25,6 +25,9 @@ const serpNestedItemSchema = z.union([
     type: z.string().nullish(),
     domain: z.string().nullish(),
     url: z.string().nullish(),
+    /** The overview's own words for this element — what the AI Overview snippet
+     *  and the brand-mention check are read off. */
+    text: z.string().nullish(),
     references: z.array(serpReferenceSchema).nullish(),
     links: z.array(serpReferenceSchema).nullish(),
   }),
@@ -154,6 +157,18 @@ export interface RankSnapshotFeature {
   clientPresent: boolean;
 }
 
+/** One source an AI Overview cited, as a snapshot row records it. */
+interface AioCitation {
+  /** 1-based rank in the de-duplicated citation list — the same count
+   *  `aioCitationPosition` reports for the tracked domain. */
+  position: number;
+  domain: string;
+  /** The cited page, when the reference carried one. */
+  url: string | null;
+  /** Whether this source is the tracked domain (or a subdomain of it). */
+  isClient: boolean;
+}
+
 export interface RankCheckResult {
   keywordId: string;
   keyword: string;
@@ -169,6 +184,16 @@ export interface RankCheckResult {
   aioPresent: boolean | null;
   aioClientCited: boolean | null;
   aioCitationPosition: number | null;
+  /** Sources the overview cited, in Google's order and de-duplicated by host.
+   *  Empty when the block was absent or never requested — a citation list is
+   *  only meaningful next to `aioPresent`. */
+  aioCitations: AioCitation[];
+  /** Whether the overview's own text named the brand. null when the block was
+   *  never requested, or when the project has no brand term to check against. */
+  aioBrandMentioned: boolean | null;
+  /** Opening of the overview's text, whitespace-collapsed and capped at
+   *  `AIO_SNIPPET_CHARS`. null when there was no overview text to read. */
+  aioSnippet: string | null;
   serpFeatures: string[];
   features: RankSnapshotFeature[];
   /** Cost DataForSEO reported on the response that produced this result. On
@@ -203,24 +228,39 @@ function hostMatchesTarget(
   return host === target || host.endsWith(`.${target}`);
 }
 
+/** Characters of overview text a snapshot keeps, matching seo-yolo's
+ *  `SNIPPET_CHARS` so the same value lands in `aio_tracking.aio_text_snippet`. */
+const AIO_SNIPPET_CHARS = 500;
+
+/** A cited source before it is numbered: the host and the page behind it. */
+interface CitedSource {
+  host: string;
+  url: string | null;
+}
+
 /**
- * Hosts cited inside one feature block, in the order Google shows them and
- * de-duplicated — the ordering that makes an AI Overview citation position
- * meaningful, since reference entries carry no rank of their own. Element-level
- * references and links come first (mirroring seo-yolo's projection), then the
- * block's own reference list.
+ * Sources cited inside one feature block, in the order Google shows them and
+ * de-duplicated by host — the ordering that makes an AI Overview citation
+ * position meaningful, since reference entries carry no rank of their own.
+ * Element-level references and links come first (mirroring seo-yolo's
+ * projection), then the block's own reference list.
  */
-function citedHosts(item: SerpLiveItem): string[] {
-  const hosts: string[] = [];
+function citedSources(item: SerpLiveItem): CitedSource[] {
+  const sources: CitedSource[] = [];
   const add = (
     refs: z.infer<typeof serpReferenceSchema>[] | null | undefined,
   ) => {
     for (const ref of refs ?? []) {
       // A string entry is either a bare URL or a plain label; toHost reads the
-      // first and the second simply never matches a tracked domain.
+      // first and the second simply never matches a tracked domain. Either way
+      // there is no separate page to record, so the citation keeps no url.
       const host =
         typeof ref === "string" ? toHost(ref) : toHost(ref.domain ?? ref.url);
-      if (host && !hosts.includes(host)) hosts.push(host);
+      if (!host || sources.some((source) => source.host === host)) continue;
+      sources.push({
+        host,
+        url: typeof ref === "string" ? null : (ref.url ?? null),
+      });
     }
   };
   for (const element of item.items ?? []) {
@@ -230,7 +270,37 @@ function citedHosts(item: SerpLiveItem): string[] {
   }
   add(item.references);
   add(item.links);
-  return hosts;
+  return sources;
+}
+
+/**
+ * The overview's own words: each element's text joined in order, with runs of
+ * whitespace collapsed so a snapshot's snippet is one readable line rather than
+ * Google's line breaks.
+ */
+function overviewText(item: SerpLiveItem): string {
+  const parts: string[] = [];
+  for (const element of item.items ?? []) {
+    if (typeof element === "string" || !element.text) continue;
+    parts.push(element.text);
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Comparison form for brand matching: lowercased with every separator dropped,
+ * which is seo-yolo's `_normalized_name`. It is what makes "The Airway
+ * Dentists", "the airway dentists" and the domain label "theairwaydentists"
+ * one term.
+ */
+function normalizeBrandText(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function mentionsBrand(text: string, brandTerms: readonly string[]): boolean {
+  const haystack = normalizeBrandText(text);
+  if (!haystack) return false;
+  return brandTerms.some((term) => haystack.includes(normalizeBrandText(term)));
 }
 
 /** Whether the tracked domain appears in a block, as its subject or a source. */
@@ -241,7 +311,9 @@ function itemMentionsTarget(item: SerpLiveItem, target: string): boolean {
   ) {
     return true;
   }
-  return citedHosts(item).some((host) => hostMatchesTarget(host, target));
+  return citedSources(item).some((source) =>
+    hostMatchesTarget(source.host, target),
+  );
 }
 
 function buildFeatureList(
@@ -280,7 +352,12 @@ export function buildRankCheckResult(
     keywordId: string;
     keyword: string;
     targetDomain: string;
-  } & { trackAiOverview?: boolean },
+  } & {
+    trackAiOverview?: boolean;
+    /** Strings that count as the brand being named in the overview's text —
+     *  resolved once per run by the caller, not per keyword. */
+    brandTerms?: readonly string[];
+  },
   items: SerpLiveItem[],
   providerCostUsd: number | null = null,
 ): RankCheckResult {
@@ -295,11 +372,16 @@ export function buildRankCheckResult(
         hostMatchesTarget(item.url, target)),
   );
   const aiOverview = items.find((item) => item.type === "ai_overview");
-  const citationIndex = aiOverview
-    ? citedHosts(aiOverview).findIndex((host) =>
-        hostMatchesTarget(host, target),
-      )
-    : -1;
+  const citations = aiOverview ? citedSources(aiOverview) : [];
+  const citationIndex = citations.findIndex((source) =>
+    hostMatchesTarget(source.host, target),
+  );
+  const overviewBody = aiOverview ? overviewText(aiOverview) : "";
+  // A term that normalizes to nothing (punctuation only) would match every
+  // text, so it is dropped before the check and before "do we have a term".
+  const brandTerms = (input.brandTerms ?? []).filter(
+    (term) => normalizeBrandText(term) !== "",
+  );
 
   return {
     keywordId: input.keywordId,
@@ -323,6 +405,24 @@ export function buildRankCheckResult(
       : null,
     aioCitationPosition:
       input.trackAiOverview && citationIndex >= 0 ? citationIndex + 1 : null,
+    aioCitations: input.trackAiOverview
+      ? citations.map((source, index) => ({
+          position: index + 1,
+          domain: source.host,
+          url: source.url,
+          isClient: hostMatchesTarget(source.host, target),
+        }))
+      : [],
+    // Same reasoning as the three flags above: with no opt-in nothing was
+    // observed, and with no brand term there is nothing to observe against.
+    aioBrandMentioned:
+      !input.trackAiOverview || brandTerms.length === 0
+        ? null
+        : aiOverview !== undefined && mentionsBrand(overviewBody, brandTerms),
+    aioSnippet:
+      input.trackAiOverview && overviewBody !== ""
+        ? overviewBody.slice(0, AIO_SNIPPET_CHARS)
+        : null,
     serpFeatures: [...new Set(items.map((item) => item.type).filter(Boolean))],
     features: buildFeatureList(items, target),
     providerCostUsd,

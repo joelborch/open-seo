@@ -99,6 +99,7 @@ describe("buildAuditProjection", () => {
 function rankSource(
   snapshots: RankRunSource["snapshots"],
   features: RankRunSource["features"] = [],
+  aioCitations: RankRunSource["aioCitations"] = [],
 ): RankRunSource {
   return {
     run: {
@@ -112,6 +113,7 @@ function rankSource(
     },
     snapshots,
     features,
+    aioCitations,
   };
 }
 
@@ -127,6 +129,8 @@ function snapshot(
     aioPresent: true,
     aioClientCited: true,
     aioCitationPosition: 2,
+    aioBrandMentioned: true,
+    aioSnippet: "Chicago dentists offering same-day crowns include…",
     ...overrides,
   };
 }
@@ -193,10 +197,20 @@ describe("buildRankProjection", () => {
 
   it("writes aio_tracking only for snapshots that were evaluated", () => {
     const result = buildRankProjection({
-      source: rankSource([
-        snapshot({ id: 1, keyword: "evaluated" }),
-        snapshot({ id: 2, keyword: "not evaluated", aioPresent: null }),
-      ]),
+      source: rankSource(
+        [
+          snapshot({ id: 1, keyword: "evaluated" }),
+          snapshot({ id: 2, keyword: "not evaluated", aioPresent: null }),
+        ],
+        [],
+        [
+          // In citation order, as the query returns them — and only the
+          // evaluated snapshot's citations reach a row.
+          { snapshotId: 1, domain: "rival.com" },
+          { snapshotId: 1, domain: "example.com" },
+          { snapshotId: 2, domain: "ignored.com" },
+        ],
+      ),
       pulledAt: PULLED_AT,
     });
 
@@ -208,9 +222,9 @@ describe("buildRankProjection", () => {
         aio_present: true,
         client_domain_cited: true,
         citation_position: 2,
-        client_name_mentioned: null,
-        cited_domains: null,
-        aio_text_snippet: null,
+        client_name_mentioned: true,
+        cited_domains: '["rival.com","example.com"]',
+        aio_text_snippet: "Chicago dentists offering same-day crowns include…",
         organic_rank: 4,
         source: PROJECTION_SOURCE,
         pulled_at: PULLED_AT,

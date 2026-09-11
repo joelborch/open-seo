@@ -12,6 +12,10 @@ type SnapshotRow = Awaited<
   ReturnType<typeof RankTrackingRepository.getLatestSnapshotsForKeywords>
 >[0];
 
+type AioCitationRow = Awaited<
+  ReturnType<typeof RankTrackingRepository.getAioCitationsForSnapshots>
+>[0];
+
 const PERIOD_DAYS: Record<ComparePeriod, number> = {
   "1d": 1,
   "7d": 7,
@@ -118,6 +122,21 @@ export async function getLatestResults(
   // it, so a newer failed run doesn't erase the date of the results shown.
   let latestStartedAt: string | null = null;
 
+  // AI Overview citations are a second round trip, so only take it when a
+  // snapshot actually saw an overview — most configs never turn the block on.
+  // The rows come back in citation order, which the grouping preserves.
+  const citationRows = await RankTrackingRepository.getAioCitationsForSnapshots(
+    currentSnapshots
+      .filter((snapshot) => snapshot.aioPresent === true)
+      .map((snapshot) => snapshot.id),
+  );
+  const citationsBySnapshot = new Map<number, AioCitationRow[]>();
+  for (const citation of citationRows) {
+    const group = citationsBySnapshot.get(citation.snapshotId);
+    if (group) group.push(citation);
+    else citationsBySnapshot.set(citation.snapshotId, [citation]);
+  }
+
   for (const snapshot of currentSnapshots) {
     const row = rows.get(snapshot.trackingKeywordId);
     if (!row) continue;
@@ -126,6 +145,7 @@ export async function getLatestResults(
       previousPositions.get(
         `${snapshot.trackingKeywordId}:${snapshot.device}`,
       ) ?? null,
+      citationsBySnapshot.get(snapshot.id) ?? [],
     );
 
     if (!latestStartedAt || snapshot.checkedAt > latestStartedAt) {
@@ -162,6 +182,7 @@ function parseSerpFeatures(raw: string | null): string[] {
 function toDeviceResult(
   snapshot: SnapshotRow,
   previousPosition: number | null,
+  citations: AioCitationRow[],
 ): RankTrackingDeviceResult {
   return {
     position: snapshot.position,
@@ -172,5 +193,11 @@ function toDeviceResult(
     aioPresent: snapshot.aioPresent,
     aioClientCited: snapshot.aioClientCited,
     aioCitationPosition: snapshot.aioCitationPosition,
+    aioCitations: citations.map((citation) => ({
+      position: citation.position,
+      domain: citation.domain,
+      isClient: citation.isClient,
+    })),
+    aioSnippet: snapshot.aioSnippet,
   };
 }

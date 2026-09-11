@@ -228,6 +228,33 @@ export const rankSnapshotFeatures = sqliteTable(
   ],
 );
 
+// Sources an AI Overview cited for one snapshot, in the order Google showed
+// them. Normalized rather than a JSON blob on the snapshot so "which
+// competitors does the overview cite for this keyword" is a query, not a parse.
+// `position` is the de-duplicated citation rank the snapshot's
+// aio_citation_position also counts in, so it doubles as the natural key.
+export const rankSnapshotAioCitations = sqliteTable(
+  "rank_snapshot_aio_citations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    snapshotId: integer("snapshot_id")
+      .notNull()
+      .references(() => rankSnapshots.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    domain: text("domain").notNull(),
+    url: text("url"),
+    isClient: integer("is_client", { mode: "boolean" })
+      .notNull()
+      .default(false),
+  },
+  (table) => [
+    uniqueIndex("rank_snapshot_aio_citations_snapshot_position_idx").on(
+      table.snapshotId,
+      table.position,
+    ),
+  ],
+);
+
 // ============================================================================
 // Maps grid (local pack geo-grid)
 // ============================================================================

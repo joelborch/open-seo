@@ -17,6 +17,7 @@ import {
   rankCheckRuns,
   rankSnapshots,
   rankSnapshotFeatures,
+  rankSnapshotAioCitations,
 } from "@/db/schema";
 import { executeInBatches } from "@/db/runBatch";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
@@ -195,6 +196,7 @@ export async function getSnapshotsForConfig(
       aioPresent: rankSnapshots.aioPresent,
       aioClientCited: rankSnapshots.aioClientCited,
       aioCitationPosition: rankSnapshots.aioCitationPosition,
+      aioSnippet: rankSnapshots.aioSnippet,
       url: rankSnapshots.url,
       serpFeatures: rankSnapshots.serpFeatures,
       checkedAt: rankSnapshots.checkedAt,
@@ -276,6 +278,7 @@ export async function getEarliestSnapshotsForKeywords(
         aioPresent: rankSnapshots.aioPresent,
         aioClientCited: rankSnapshots.aioClientCited,
         aioCitationPosition: rankSnapshots.aioCitationPosition,
+        aioSnippet: rankSnapshots.aioSnippet,
         url: rankSnapshots.url,
         serpFeatures: rankSnapshots.serpFeatures,
         checkedAt: rankSnapshots.checkedAt,
@@ -339,29 +342,72 @@ export async function getSnapshotIdsForRun(runId: string) {
 }
 
 /**
- * Rewrite the feature rows for a set of snapshots. Delete-then-insert rather
- * than upsert because the table has no natural unique key, and a replayed
- * workflow step must not double the rows.
+ * Rewrite the normalized detail rows for a set of snapshots: the SERP features
+ * observed and the sources an AI Overview cited. Delete-then-insert rather than
+ * upsert because a replayed workflow step must not double the rows, and both
+ * tables are rewritten together so a retried write can never leave a snapshot
+ * with this round's features beside the last round's citations.
  */
-export async function replaceSnapshotFeatures(
+export async function replaceSnapshotDetail(
   snapshotIds: number[],
-  rows: Array<InferInsertModel<typeof rankSnapshotFeatures>>,
+  rows: {
+    features: Array<InferInsertModel<typeof rankSnapshotFeatures>>;
+    aioCitations: Array<InferInsertModel<typeof rankSnapshotAioCitations>>;
+  },
 ) {
   if (snapshotIds.length === 0) return;
   // One extra bind is unused here, but keep the IN list under D1's ~100
   // bound-parameter ceiling.
   const deleteBatchSize = 90;
   for (let i = 0; i < snapshotIds.length; i += deleteBatchSize) {
+    const ids = snapshotIds.slice(i, i + deleteBatchSize);
     await db
       .delete(rankSnapshotFeatures)
-      .where(
-        inArray(
-          rankSnapshotFeatures.snapshotId,
-          snapshotIds.slice(i, i + deleteBatchSize),
-        ),
-      );
+      .where(inArray(rankSnapshotFeatures.snapshotId, ids));
+    await db
+      .delete(rankSnapshotAioCitations)
+      .where(inArray(rankSnapshotAioCitations.snapshotId, ids));
   }
-  await executeInBatches(rows, (tx, row) =>
+  await executeInBatches(rows.features, (tx, row) =>
     tx.insert(rankSnapshotFeatures).values(row),
   );
+  await executeInBatches(rows.aioCitations, (tx, row) =>
+    tx.insert(rankSnapshotAioCitations).values(row),
+  );
+}
+
+/**
+ * The AI Overview citations recorded for a set of snapshots, in citation order.
+ * Chunked for the same D1 bound-parameter ceiling as the rewrite above.
+ */
+export async function getAioCitationsForSnapshots(snapshotIds: number[]) {
+  const rows: Array<{
+    snapshotId: number;
+    position: number;
+    domain: string;
+    url: string | null;
+    isClient: boolean;
+  }> = [];
+  const batchSize = 90;
+  for (let i = 0; i < snapshotIds.length; i += batchSize) {
+    rows.push(
+      ...(await db
+        .select({
+          snapshotId: rankSnapshotAioCitations.snapshotId,
+          position: rankSnapshotAioCitations.position,
+          domain: rankSnapshotAioCitations.domain,
+          url: rankSnapshotAioCitations.url,
+          isClient: rankSnapshotAioCitations.isClient,
+        })
+        .from(rankSnapshotAioCitations)
+        .where(
+          inArray(
+            rankSnapshotAioCitations.snapshotId,
+            snapshotIds.slice(i, i + batchSize),
+          ),
+        )
+        .orderBy(rankSnapshotAioCitations.position)),
+    );
+  }
+  return rows;
 }

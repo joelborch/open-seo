@@ -15,6 +15,14 @@ import {
 // and two `people_also_search` blocks. Long text is shortened; every key name
 // and nesting level is as DataForSEO returned it.
 import houstonLiveAdvanced from "@/server/lib/dataforseo/__fixtures__/organic-live-advanced-houston.json";
+// A second real (trimmed) receipt from the same client, this one with an AI
+// Overview: "best airway dentist houston", Houston, desktop,
+// load_async_ai_overview — one `ai_overview` block whose element references,
+// element links and block-level references all name the same four hosts, plus
+// three organic results. Reference page snippets and the markdown renderings are
+// shortened; the elements' own `text` is verbatim, because that is the overview
+// body the snippet and brand-mention check are read from.
+import houstonAioLiveAdvanced from "@/server/lib/dataforseo/__fixtures__/organic-live-advanced-aio-houston.json";
 
 function stubResponse(payload: unknown) {
   const fetchMock = vi
@@ -104,6 +112,10 @@ describe("SERP item parsing", () => {
       aioPresent: false,
       aioClientCited: false,
       aioCitationPosition: null,
+      aioCitations: [],
+      // No overview block, so there is no text to check the brand against.
+      aioBrandMentioned: null,
+      aioSnippet: null,
       serpFeatures: [
         "local_pack",
         "people_also_ask",
@@ -132,6 +144,89 @@ describe("SERP item parsing", () => {
       ],
       providerCostUsd: 0.0035,
     });
+  });
+
+  it("reads an AI Overview's citations, brand mention and snippet", async () => {
+    stubResponse(houstonAioLiveAdvanced);
+
+    const { data } = await fetchRankCheckSerp({
+      ...houstonRankCheck,
+      keyword: "best airway dentist houston",
+      device: "desktop",
+      targetDomain: "theairwaydentists.com",
+      trackAiOverview: true,
+      brandTerms: ["The Airway Dentists", "theairwaydentists"],
+    });
+
+    // Element references first, then element links, then the block's own
+    // reference list — de-duplicated by host, which is what makes the position
+    // comparable to seo-yolo's citation_position.
+    expect(data.aioCitations).toEqual([
+      {
+        position: 1,
+        domain: "theairwaydentists.com",
+        url: "https://theairwaydentists.com/",
+        isClient: true,
+      },
+      {
+        position: 2,
+        domain: "houstonairwayalliance.org",
+        url: "https://www.houstonairwayalliance.org/dental-list",
+        isClient: false,
+      },
+      {
+        position: 3,
+        domain: "adore-dentistry.com",
+        url: "https://www.adore-dentistry.com/adultsairwaytherapy",
+        isClient: false,
+      },
+      {
+        position: 4,
+        domain: "miaorthodontics.com",
+        url: "https://miaorthodontics.com/airway-orthodontics-in-houston-tx/",
+        isClient: false,
+      },
+    ]);
+    expect(data.aioCitationPosition).toBe(1);
+    expect(data.aioClientCited).toBe(true);
+    // The overview names the brand in prose, not only as a citation.
+    expect(data.aioBrandMentioned).toBe(true);
+    // Google's line breaks collapse to single spaces, and the body is cut at 500.
+    expect(data.aioSnippet).toHaveLength(500);
+    expect(data.aioSnippet).toContain(
+      "functional orthodontics/Invisalign for all ages. Locations:",
+    );
+  });
+
+  it("leaves the brand mention unstated when no brand term was given", async () => {
+    stubResponse(houstonAioLiveAdvanced);
+
+    const { data } = await fetchRankCheckSerp({
+      ...houstonRankCheck,
+      targetDomain: "adore-dentistry.com",
+      trackAiOverview: true,
+    });
+
+    expect(data.aioBrandMentioned).toBeNull();
+    // Still a citation, just not the first one.
+    expect(data.aioCitationPosition).toBe(3);
+    expect(
+      data.aioCitations.filter((citation) => citation.isClient),
+    ).toHaveLength(1);
+  });
+
+  it("says nothing about an AI Overview the config never bought", async () => {
+    stubResponse(houstonAioLiveAdvanced);
+
+    const { data } = await fetchRankCheckSerp({
+      ...houstonRankCheck,
+      targetDomain: "theairwaydentists.com",
+      brandTerms: ["The Airway Dentists"],
+    });
+
+    expect(data.aioCitations).toEqual([]);
+    expect(data.aioBrandMentioned).toBeNull();
+    expect(data.aioSnippet).toBeNull();
   });
 
   it("keeps a block type it doesn't model, with its type and rank", async () => {

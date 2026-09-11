@@ -1,0 +1,427 @@
+{
+  "version": "0.1.20260902",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "cost": 0.004,
+  "tasks": [
+    {
+      "id": "09071639-1337-0139-0000-2b9b0daf6736",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "cost": 0.004,
+      "result_count": 1,
+      "path": ["v3", "serp", "google", "organic", "live", "advanced"],
+      "data": {
+        "api": "serp",
+        "device": "desktop",
+        "function": "live",
+        "keyword": "best airway dentist houston",
+        "language_code": "en",
+        "load_async_ai_overview": true,
+        "location_name": "Houston,Texas,United States",
+        "os": "windows",
+        "se": "google",
+        "se_type": "organic",
+        "tag": "seoyolo-c0f77923ac0f1c36487a812e817d0e76-13"
+      },
+      "result": [
+        {
+          "check_url": "https://www.google.com/search?q=best%20airway%20dentist%20houston&hl=en&gl=US&ie=UTF-8&uule=w+CAIQIFISCQGFjUi0uECGETsFZfPeAg3K",
+          "datetime": "2026-09-07 16:39:47 +00:00",
+          "keyword": "best airway dentist houston",
+          "language_code": "en",
+          "location_code": 1026481,
+          "pages_count": 1,
+          "refinement_chips": null,
+          "se_domain": "google.com",
+          "se_results_count": 112,
+          "spell": null,
+          "type": "organic",
+          "item_types": ["ai_overview", "organic"],
+          "items_count": 4,
+          "items": [
+            {
+              "asynchronous_ai_overview": true,
+              "items": [
+                {
+                  "images": null,
+                  "links": [
+                    {
+                      "description": null,
+                      "domain": "theairwaydentists.com",
+                      "title": "The Heights",
+                      "type": "link_element",
+                      "url": "https://theairwaydentists.com/locations/the-heights/"
+                    },
+                    {
+                      "description": null,
+                      "domain": "theairwaydentists.com",
+                      "title": "Atascocita/Lake Houston",
+                      "type": "link_element",
+                      "url": "https://theairwaydentists.com/locations/atascocita/"
+                    }
+                  ],
+                  "markdown": "Top airway-focused dental practices in the Greater Houston area include The Airway Dentists with multiple locations (including [The Heights](https://theairwaydentists.com/locations/the-heights/) and […",
+                  "position": "left",
+                  "references": [
+                    {
+                      "domain": "theairwaydentists.com",
+                      "position": "left",
+                      "source": "The Airway Dentists",
+                      "text": "Some symptoms that may be connected to airway health include: * Bedwetting in children * Dark under-eye circles The Airw…",
+                      "title": "Airway Dentistry in Houston & Austin, TX | Sleep & Invisalign® Experts",
+                      "type": "ai_overview_reference",
+                      "url": "https://theairwaydentists.com/"
+                    },
+                    {
+                      "domain": "www.houstonairwayalliance.org",
+                      "position": "left",
+                      "source": "Airway Alliance",
+                      "text": "Location: Houston Heights. Dentists: Emilyann Pham DDS, Rosalie Nguyen DDS, Ann Shui DDS. Website: https://www.adore-den…",
+                      "title": "Dental Collaborators - Airway Alliance",
+                      "type": "ai_overview_reference",
+                      "url": "https://www.houstonairwayalliance.org/dental-list"
+                    },
+                    {
+                      "domain": "theairwaydentists.com",
+                      "position": "left",
+                      "source": "The Airway Dentists",
+                      "text": "Your medical provider can give guidance on what is best for your situation. This information does not constitute medical…",
+                      "title": "Dentist in Atascocita, TX | Airway, Sleep Apnea & Invisalign",
+                      "type": "ai_overview_reference",
+                      "url": "https://theairwaydentists.com/locations/atascocita/"
+                    }
+                  ],
+                  "text": "Top airway-focused dental practices in the Greater Houston area include The Airway Dentists with multiple locations (including The Heights and Atascocita/Lake Houston ) and Adore Dentistry in the Houston Heights.",
+                  "title": null,
+                  "type": "ai_overview_element"
+                },
+                {
+                  "images": [
+                    {
+                      "alt": null,
+                      "image_url": "https://lh3.googleusercontent.com/grass-cs/ACvplmNgzmB-EJqhGp_dDnwg_YjTd2icDuRXr0OSEo-7pGva-KRmvnSoBlKaUfSdgys5q2pdPEezILQP5riDPNO_fWda2uDaTmp0ZSjul_SwYmiwfHxHhnpq-2jbXwhW1xF_JWNzeNHchKJevg-U=s108-w108-h144-n-k-no",
+                      "type": "images_element",
+                      "url": null
+                    },
+                    {
+                      "alt": null,
+                      "image_url": "https://lh3.googleusercontent.com/grass-cs/ACvplmM8EfZT6r1RqXXN5E3PVgaDIgENp53V1wdFhHZGIABOYJZpREfjoCpRTybcKU_EndYU79xb8XWO1dwTphI0yM_oP9nBvuuhzYuMn6vV5zPqncN_bqfJzHHHni8bU5RI14qtP0p9XA=s192-w192-h144-n-k-no",
+                      "type": "images_element",
+                      "url": null
+                    },
+                    {
+                      "alt": null,
+                      "image_url": "https://lh3.googleusercontent.com/grass-cs/ACvplmOh17EQ0rNGHlCixYmhHFUMgP40UD23b1THYfUw-sANy1j2tPONVFD_zcjfTaJo5kzIfkyKRwi-EQOF96uW94jUyPB_EIh4Fvgd4fMKPghhFP5cN9OmyNlgDs1PvyQqcmyFFpidFLjxwoY=s108-w108-h144-n-k-no",
+                      "type": "images_element",
+                      "url": null
+                    }
+                  ],
+                  "links": null,
+                  "markdown": "---\n\n![](https://lh3.googleusercontent.com/grass-cs/ACvplmNgzmB-EJqhGp_dDnwg_YjTd2icDuRXr0OSEo-7pGva-KRmvnSoBlKaUfSdgys5q2pdPEezILQP5riDPNO_fWda2uDaTmp0ZSjul_SwYmiwfHxHhnpq-2jbXwhW1xF_JWNzeNHchKJevg-U…",
+                  "position": "left",
+                  "references": [
+                    {
+                      "domain": "theairwaydentists.com",
+                      "position": "left",
+                      "source": "The Airway Dentists",
+                      "text": "The Heights office offers: * **Airway-focused care** * **Personalized, science-backed dentistry** * **Root-cause approac…",
+                      "title": "Dentist in The Heights, Houston | Airway, Sleep Apnea & Invisalign",
+                      "type": "ai_overview_reference",
+                      "url": "https://theairwaydentists.com/locations/the-heights/"
+                    },
+                    {
+                      "domain": "theairwaydentists.com",
+                      "position": "left",
+                      "source": "The Airway Dentists",
+                      "text": "Whether you are looking for a cosmetic touch-up or a functional transformation, we have a solution. * Invisalign® The wo…",
+                      "title": "Orthodontics & Invisalign in Houston & Austin, TX - The Airway Dentists",
+                      "type": "ai_overview_reference",
+                      "url": "https://theairwaydentists.com/service/orthodontics/"
+                    },
+                    {
+                      "domain": "theairwaydentists.com",
+                      "position": "left",
+                      "source": "The Airway Dentists",
+                      "text": "Some symptoms that may be connected to airway health include: * Bedwetting in children * Dark under-eye circles The Airw…",
+                      "title": "Airway Dentistry in Houston & Austin, TX | Sleep & Invisalign® Experts",
+                      "type": "ai_overview_reference",
+                      "url": "https://theairwaydentists.com/"
+                    },
+                    {
+                      "domain": "theairwaydentists.com",
+                      "position": "left",
+                      "source": "The Airway Dentists",
+                      "text": "Your medical provider can give guidance on what is best for your situation. This information does not constitute medical…",
+                      "title": "Dentist in Atascocita, TX | Airway, Sleep Apnea & Invisalign",
+                      "type": "ai_overview_reference",
+                      "url": "https://theairwaydentists.com/locations/atascocita/"
+                    },
+                    {
+                      "domain": "www.adore-dentistry.com",
+                      "position": "left",
+                      "source": "www.adore-dentistry.com",
+                      "text": "Your medical provider can give guidance on what is best for your situation. This information does not constitute medical…",
+                      "title": "Adult's Airway Therapy | Adore | Holistic & Biological Dentistry in Houston",
+                      "type": "ai_overview_reference",
+                      "url": "https://www.adore-dentistry.com/adultsairwaytherapy"
+                    },
+                    {
+                      "domain": "www.adore-dentistry.com",
+                      "position": "left",
+                      "source": "www.adore-dentistry.com",
+                      "text": "A medical expert, like a doctor, is best able to help you find the information and care you need. This information does…",
+                      "title": "Children's Airway Therapy | Adore | Holistic & Biological Dentistry in Houston Heights",
+                      "type": "ai_overview_reference",
+                      "url": "https://www.adore-dentistry.com/childrensairwaytherapy"
+                    },
+                    {
+                      "domain": "www.houstonairwayalliance.org",
+                      "position": "left",
+                      "source": "Airway Alliance",
+                      "text": "Location: Houston Heights. Dentists: Emilyann Pham DDS, Rosalie Nguyen DDS, Ann Shui DDS. Website: https://www.adore-den…",
+                      "title": "Dental Collaborators - Airway Alliance",
+                      "type": "ai_overview_reference",
+                      "url": "https://www.houstonairwayalliance.org/dental-list"
+                    },
+                    {
+                      "domain": "miaorthodontics.com",
+                      "position": "left",
+                      "source": "Mia Orthodontics",
+                      "text": "Airway orthodontics is a modern approach to orthodontic treatment that focuses on improving breathing and aligning teeth…",
+                      "title": "Airway Orthodontics in Houston, TX",
+                      "type": "ai_overview_reference",
+                      "url": "https://miaorthodontics.com/airway-orthodontics-in-houston-tx/"
+                    }
+                  ],
+                  "text": "The Airway Dentists 5.0 (132) Dentist Open 2702 Yale St Ste 102 Call Directions WebsiteFocus: Comprehensive airway health, sleep apnea treatment, palatal expansion, and functional orthodontics/Invisalign for all ages.\nLocations: The Heights (2702 Yale St), Atascocita/Lake Houston (16402 W. Lake Houston Pkwy), plus nearby Cypress, Katy, and Sugar Land.\nAdore Dentistry 4.8 (232) Dentist Closed 540 W 19th St Call Directions WebsiteFocus: Holistic, biological dentistry providing children and adult airway therapy, HealthyStart systems, and root-cause treatments for teeth grinding and breathing issues.\nLocation: Houston Heights, led by dentists like Dr. Emilyann Pham and Dr. Ann Shui.\nMia Orthodontics 5.0 (452) Orthodontist Open 3636 Greenbriar Dr Ste A-101 Call Directions WebsiteFocus: Airway orthodontics focusing on narrow palates, mouth breathing, and sleep apnea for kids and adults under board-certified orthodontist Dr. Alireza Hourfar.",
+                  "title": "Top Airway Dental Options in Houston",
+                  "type": "ai_overview_element"
+                },
+                {
+                  "images": null,
+                  "links": null,
+                  "markdown": "To help narrow down the best choice, please let me know:\n\n- Are you looking for an airway dentist for an **adult or a child**?\n- What specific **symptoms** (such as snoring, mouth breathing, or teeth…",
+                  "position": "left",
+                  "references": null,
+                  "text": "To help narrow down the best choice, please let me know:Are you looking for an airway dentist for an adult or a child ?\nWhat specific symptoms (such as snoring, mouth breathing, or teeth grinding) are you trying to address?",
+                  "title": null,
+                  "type": "ai_overview_element"
+                }
+              ],
+              "markdown": "Top airway-focused dental practices in the Greater Houston area include The Airway Dentists with multiple locations (including [The Heights](https://theairwaydentists.com/locations/the-heights/) and […",
+              "page": 1,
+              "position": "left",
+              "rank_absolute": 1,
+              "rank_group": 1,
+              "rectangle": null,
+              "references": [
+                {
+                  "domain": "theairwaydentists.com",
+                  "position": "right",
+                  "source": "The Airway Dentists",
+                  "text": "Some symptoms that may be connected to airway health include: * Bedwetting in children * Dark under-eye circles The Airw…",
+                  "title": "Airway Dentistry in Houston & Austin, TX | Sleep & Invisalign® Experts",
+                  "type": "ai_overview_reference",
+                  "url": "https://theairwaydentists.com/"
+                },
+                {
+                  "domain": "theairwaydentists.com",
+                  "position": "right",
+                  "source": "The Airway Dentists",
+                  "text": "The Heights office offers: * **Airway-focused care** * **Personalized, science-backed dentistry** * **Root-cause approac…",
+                  "title": "Dentist in The Heights, Houston | Airway, Sleep Apnea & Invisalign",
+                  "type": "ai_overview_reference",
+                  "url": "https://theairwaydentists.com/locations/the-heights/"
+                },
+                {
+                  "domain": "www.adore-dentistry.com",
+                  "position": "right",
+                  "source": "www.adore-dentistry.com",
+                  "text": "Your medical provider can give guidance on what is best for your situation. This information does not constitute medical…",
+                  "title": "Adult's Airway Therapy | Adore | Holistic & Biological Dentistry in Houston",
+                  "type": "ai_overview_reference",
+                  "url": "https://www.adore-dentistry.com/adultsairwaytherapy"
+                },
+                {
+                  "domain": "www.houstonairwayalliance.org",
+                  "position": "right",
+                  "source": "Airway Alliance",
+                  "text": "Location: Houston Heights. Dentists: Emilyann Pham DDS, Rosalie Nguyen DDS, Ann Shui DDS. Website: https://www.adore-den…",
+                  "title": "Dental Collaborators - Airway Alliance",
+                  "type": "ai_overview_reference",
+                  "url": "https://www.houstonairwayalliance.org/dental-list"
+                },
+                {
+                  "domain": "miaorthodontics.com",
+                  "position": "right",
+                  "source": "Mia Orthodontics",
+                  "text": "Airway orthodontics is a modern approach to orthodontic treatment that focuses on improving breathing and aligning teeth…",
+                  "title": "Airway Orthodontics in Houston, TX",
+                  "type": "ai_overview_reference",
+                  "url": "https://miaorthodontics.com/airway-orthodontics-in-houston-tx/"
+                },
+                {
+                  "domain": "www.adore-dentistry.com",
+                  "position": "right",
+                  "source": "www.adore-dentistry.com",
+                  "text": "A medical expert, like a doctor, is best able to help you find the information and care you need. This information does…",
+                  "title": "Children's Airway Therapy | Adore | Holistic & Biological Dentistry in Houston Heights",
+                  "type": "ai_overview_reference",
+                  "url": "https://www.adore-dentistry.com/childrensairwaytherapy"
+                },
+                {
+                  "domain": "theairwaydentists.com",
+                  "position": "right",
+                  "source": "The Airway Dentists",
+                  "text": "Your medical provider can give guidance on what is best for your situation. This information does not constitute medical…",
+                  "title": "Dentist in Atascocita, TX | Airway, Sleep Apnea & Invisalign",
+                  "type": "ai_overview_reference",
+                  "url": "https://theairwaydentists.com/locations/atascocita/"
+                },
+                {
+                  "domain": "theairwaydentists.com",
+                  "position": "right",
+                  "source": "The Airway Dentists",
+                  "text": "Whether you are looking for a cosmetic touch-up or a functional transformation, we have a solution. * Invisalign® The wo…",
+                  "title": "Orthodontics & Invisalign in Houston & Austin, TX - The Airway Dentists",
+                  "type": "ai_overview_reference",
+                  "url": "https://theairwaydentists.com/service/orthodontics/"
+                }
+              ],
+              "type": "ai_overview",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]"
+            },
+            {
+              "about_this_result": null,
+              "amp_version": false,
+              "breadcrumb": "https://theairwaydentists.com",
+              "cache_url": null,
+              "checks": null,
+              "description": "Whole-health, airway-focused dental care across Greater Houston and Austin connecting breathing, sleep, jaw growth, oral…",
+              "domain": "theairwaydentists.com",
+              "extended_people_also_search": null,
+              "extended_snippet": null,
+              "faq": null,
+              "highlighted": ["airway", "dental", "Houston"],
+              "images": null,
+              "is_featured_snippet": false,
+              "is_image": false,
+              "is_malicious": false,
+              "is_video": false,
+              "is_web_story": false,
+              "links": [
+                {
+                  "description": "Airway Dentists in Sugar Land, Texas ... At our Sugar Land ...",
+                  "domain": "theairwaydentists.com",
+                  "title": "Sugar Land, TX",
+                  "type": "link_element",
+                  "url": "https://theairwaydentists.com/locations/sugar-land/"
+                },
+                {
+                  "description": "The Airway Dentist @ The Heights has changed my life! The entire ...",
+                  "domain": "theairwaydentists.com",
+                  "title": "Dentist in The Heights, Houston",
+                  "type": "link_element",
+                  "url": "https://theairwaydentists.com/locations/the-heights/"
+                }
+              ],
+              "page": 1,
+              "position": "left",
+              "pre_snippet": null,
+              "price": null,
+              "rank_absolute": 2,
+              "rank_group": 1,
+              "rating": null,
+              "rectangle": null,
+              "related_result": null,
+              "related_search_url": null,
+              "timestamp": null,
+              "title": "Airway Dentistry in Houston & Austin, TX | Sleep & Invisalign ...",
+              "type": "organic",
+              "url": "https://theairwaydentists.com/",
+              "website_name": "The Airway Dentists",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]"
+            },
+            {
+              "about_this_result": null,
+              "amp_version": false,
+              "breadcrumb": "https://dhorthodontics.com › airway-orthodontics",
+              "cache_url": null,
+              "checks": null,
+              "description": "Airway orthodontics in Houston with board-certified orthodontist Dr. Amir Davoody. We assess breathing, jaw growth, and…",
+              "domain": "dhorthodontics.com",
+              "extended_people_also_search": null,
+              "extended_snippet": null,
+              "faq": null,
+              "highlighted": ["board-certified orthodontist Dr. Amir Davoody"],
+              "images": null,
+              "is_featured_snippet": false,
+              "is_image": false,
+              "is_malicious": false,
+              "is_video": false,
+              "is_web_story": false,
+              "links": null,
+              "page": 1,
+              "position": "left",
+              "pre_snippet": null,
+              "price": null,
+              "rank_absolute": 4,
+              "rank_group": 2,
+              "rating": null,
+              "rectangle": null,
+              "related_result": null,
+              "related_search_url": null,
+              "timestamp": null,
+              "title": "Airway Orthodontics in Houston, TX | Dr. Amir Davoody",
+              "type": "organic",
+              "url": "https://dhorthodontics.com/airway-orthodontics/",
+              "website_name": "Davoody and Hablinski Orthodontics",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[6]/div[1]/div[1]"
+            },
+            {
+              "about_this_result": null,
+              "amp_version": false,
+              "breadcrumb": "https://miaorthodontics.com › airway-orthodontics-in-ho...",
+              "cache_url": null,
+              "checks": null,
+              "description": "Led by board-certified orthodontist Dr. Alireza Hourfar, our practice uses cutting-edge technology to diagnose and treat…",
+              "domain": "miaorthodontics.com",
+              "extended_people_also_search": null,
+              "extended_snippet": null,
+              "faq": null,
+              "highlighted": [
+                "board-certified orthodontist Dr. Alireza Hourfar"
+              ],
+              "images": null,
+              "is_featured_snippet": false,
+              "is_image": false,
+              "is_malicious": false,
+              "is_video": false,
+              "is_web_story": false,
+              "links": null,
+              "page": 1,
+              "position": "left",
+              "pre_snippet": null,
+              "price": null,
+              "rank_absolute": 5,
+              "rank_group": 3,
+              "rating": null,
+              "rectangle": null,
+              "related_result": null,
+              "related_search_url": null,
+              "timestamp": null,
+              "title": "Airway Orthodontics in Houston, TX",
+              "type": "organic",
+              "url": "https://miaorthodontics.com/airway-orthodontics-in-houston-tx/",
+              "website_name": "Mia Orthodontics",
+              "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[2]/div[1]/div[2]/div[1]/div[1]/div[8]/div[1]/div[1]"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

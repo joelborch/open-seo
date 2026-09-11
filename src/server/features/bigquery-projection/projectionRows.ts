@@ -9,8 +9,8 @@
  * lands as its own row rather than overwriting history.
  *
  * Where seo-yolo derives a value from the raw provider payload that open-seo
- * never stores (the full SERP item list, AI-overview text), the column is left
- * null and the reason is commented at the assignment.
+ * never stores (the competing organic results behind `top_domains`), the column
+ * is left null and the reason is commented at the assignment.
  */
 import { sort } from "remeda";
 import type { BqInputRow } from "@/server/lib/bigquery";
@@ -143,6 +143,8 @@ export type RankRunSource = {
     aioPresent: boolean | null;
     aioClientCited: boolean | null;
     aioCitationPosition: number | null;
+    aioBrandMentioned: boolean | null;
+    aioSnippet: string | null;
   }[];
   features: {
     snapshotId: number;
@@ -150,13 +152,16 @@ export type RankRunSource = {
     rankAbsolute: number | null;
     clientPresent: boolean;
   }[];
+  /** Hosts each snapshot's AI Overview cited, in citation order — the order the
+   *  query returns them in, which `cited_domains` reproduces verbatim. */
+  aioCitations: { snapshotId: number; domain: string }[];
 };
 
 export function buildRankProjection(input: {
   source: RankRunSource;
   pulledAt: string;
 }): ProjectionResult {
-  const { run, config, snapshots, features } = input.source;
+  const { run, config, snapshots, features, aioCitations } = input.source;
   const reportDate = observationDate(run.completedAt ?? run.startedAt);
   const location = config.locationName ?? String(config.locationCode);
   // seo-yolo's schema has no device dimension: both tables key on keyword only,
@@ -164,6 +169,10 @@ export function buildRankProjection(input: {
   // both. Mobile-only configs project their mobile snapshot.
   const chosen = preferDesktopPerKeyword(snapshots);
   const featuresBySnapshot = groupBy(features, (feature) => feature.snapshotId);
+  const citationsBySnapshot = groupBy(
+    aioCitations,
+    (citation) => citation.snapshotId,
+  );
 
   const keywordRankings: BqInputRow[] = [];
   const aioTracking: BqInputRow[] = [];
@@ -221,12 +230,16 @@ export function buildRankProjection(input: {
       aio_present: snapshot.aioPresent,
       client_domain_cited: snapshot.aioClientCited ?? false,
       citation_position: snapshot.aioCitationPosition,
-      // Both derived from the overview's text in seo-yolo. open-seo stores the
-      // citation verdict but not the overview body, so neither the brand-mention
-      // check nor the snippet can be reproduced.
-      client_name_mentioned: null,
-      cited_domains: null,
-      aio_text_snippet: null,
+      client_name_mentioned: snapshot.aioBrandMentioned,
+      // A JSON array of hosts in citation order, in the STRING column seo-yolo
+      // declared — the column type is shared with rows seo-yolo's own projection
+      // wrote, so it stays STRING and the array travels as its text.
+      cited_domains: JSON.stringify(
+        (citationsBySnapshot.get(snapshot.id) ?? []).map(
+          (citation) => citation.domain,
+        ),
+      ),
+      aio_text_snippet: snapshot.aioSnippet,
       organic_rank: snapshot.position,
       source: PROJECTION_SOURCE,
       pulled_at: input.pulledAt,

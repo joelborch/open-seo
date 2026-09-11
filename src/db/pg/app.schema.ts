@@ -347,6 +347,11 @@ export const rankSnapshots = pgTable(
     aioPresent: boolean("aio_present"),
     aioClientCited: boolean("aio_client_cited"),
     aioCitationPosition: integer("aio_citation_position"),
+    // Whether the overview's own text named the brand, and the opening of that
+    // text (capped at 500 characters by the parser, as seo-yolo's projection
+    // does). Both null when AI Overview tracking was off for the check.
+    aioBrandMentioned: boolean("aio_brand_mentioned"),
+    aioSnippet: text("aio_snippet"),
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
     checkedAt: timestampColumn("checked_at").notNull().default(isoNow),

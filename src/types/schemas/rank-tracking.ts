@@ -26,6 +26,14 @@ export type RankCheckTriggerResult =
       blockingRunId: string | null;
     };
 
+/** One source an AI Overview cited, as the results table renders it. */
+export interface RankTrackingAioCitation {
+  position: number;
+  domain: string;
+  /** Whether this is the tracked domain — the one the badge highlights. */
+  isClient: boolean;
+}
+
 export interface RankTrackingDeviceResult {
   position: number | null;
   previousPosition: number | null;
@@ -38,6 +46,11 @@ export interface RankTrackingDeviceResult {
   aioPresent: boolean | null;
   aioClientCited: boolean | null;
   aioCitationPosition: number | null;
+  /** Sources the overview cited, in citation order. Empty when no overview was
+   *  seen, or when the snapshot predates citation detail. */
+  aioCitations: RankTrackingAioCitation[];
+  /** Opening of the overview's text, as stored on the snapshot. */
+  aioSnippet: string | null;
 }
 
 export interface RankTrackingRow {

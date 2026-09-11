@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   failRunIfActive: vi.fn(),
   captureServerEvent: vi.fn(),
   isHostedServerAuthMode: vi.fn(),
+  resolveBrandTerms: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -34,6 +35,9 @@ vi.mock(
   "@/server/features/rank-tracking/repositories/RankTrackingRepository",
   () => ({ RankTrackingRepository: mocks }),
 );
+vi.mock("@/server/features/rank-tracking/services/brandTerms", () => ({
+  resolveBrandTerms: mocks.resolveBrandTerms,
+}));
 vi.mock("@/server/features/rank-tracking/services/rankCheckRunGuards", () => ({
   failRunIfActive: mocks.failRunIfActive,
 }));
@@ -140,6 +144,8 @@ describe("rank check workflow credit ceiling", () => {
     const result = await prepareRankCheckKeywords({
       runId: "run_1",
       configId: "config_1",
+      projectId: "project_1",
+      domain: "example.com",
       billingCustomer,
       devices: "desktop",
       serpDepth: 10,
@@ -163,6 +169,8 @@ describe("rank check workflow credit ceiling", () => {
     const result = await prepareRankCheckKeywords({
       runId: "run_1",
       configId: "config_1",
+      projectId: "project_1",
+      domain: "example.com",
       billingCustomer,
       devices: "desktop",
       serpDepth: 10,

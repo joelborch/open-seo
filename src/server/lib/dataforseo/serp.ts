@@ -117,6 +117,9 @@ export async function fetchRankCheckSerp(
     device: "desktop" | "mobile";
     targetDomain: string;
     depth: number;
+    /** Brand strings the AI Overview's text is checked against. Resolved once
+     *  per run by the caller and passed straight through to the parser. */
+    brandTerms?: readonly string[];
   } & RankCheckCollectionOptions,
 ): Promise<DataforseoApiResponse<RankCheckResult>> {
   const depth = clampSerpDepth(input.depth);
@@ -303,6 +306,9 @@ export async function fetchRankCheckTaskResult(
     keywordId: string;
     keyword: string;
     targetDomain: string;
+    /** Brand strings the AI Overview's text is checked against, as on the live
+     *  path — both go through buildRankCheckResult, so both need them. */
+    brandTerms?: readonly string[];
   } & RankCheckCollectionOptions,
 ): Promise<RankCheckTaskOutcome> {
   const response = await dataforseoGet(

@@ -5,7 +5,7 @@ import type { RankCheckResultWithDevice } from "./rankSnapshotWriter";
 const mocks = vi.hoisted(() => ({
   insertSnapshots: vi.fn(),
   getSnapshotIdsForRun: vi.fn(),
-  replaceSnapshotFeatures: vi.fn(),
+  replaceSnapshotDetail: vi.fn(),
 }));
 
 vi.mock(
@@ -23,6 +23,20 @@ function result(): RankCheckResultWithDevice {
     features: [
       { featureType: "local_pack", rankAbsolute: 2, clientPresent: true },
     ],
+    aioPresent: true,
+    aioClientCited: true,
+    aioCitationPosition: 2,
+    aioBrandMentioned: true,
+    aioSnippet: "Top airway dentists in Houston include…",
+    aioCitations: [
+      {
+        position: 1,
+        domain: "rival.com",
+        url: "https://rival.com/a",
+        isClient: false,
+      },
+      { position: 2, domain: "example.com", url: null, isClient: true },
+    ],
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- fixture is trimmed to the fields under test
   } as unknown as RankCheckResultWithDevice;
 }
@@ -35,7 +49,7 @@ const existingRow = {
 
 /**
  * Snapshots insert on-conflict-do-nothing, so a result whose row already exists
- * keeps the earlier row's position. Its feature rows have to stay with it, or a
+ * keeps the earlier row's position. Its detail rows have to stay with it, or a
  * live-fallback write bolts fresh SERP detail onto a queued snapshot.
  */
 describe("persisting rank check results", () => {
@@ -43,24 +57,62 @@ describe("persisting rank check results", () => {
     mocks.insertSnapshots.mockResolvedValue(undefined);
   });
 
-  it("leaves the features of a snapshot that already existed", async () => {
+  it("leaves the detail rows of a snapshot that already existed", async () => {
     mocks.getSnapshotIdsForRun.mockResolvedValue([existingRow]);
 
     await persistRankCheckResults("run_1", [result()]);
 
-    expect(mocks.replaceSnapshotFeatures).toHaveBeenCalledWith([], []);
+    expect(mocks.replaceSnapshotDetail).toHaveBeenCalledWith([], {
+      features: [],
+      aioCitations: [],
+    });
   });
 
-  it("writes the features of a snapshot this call inserted", async () => {
+  it("writes the features and AI Overview citations it inserted", async () => {
     mocks.getSnapshotIdsForRun
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([existingRow]);
 
     await persistRankCheckResults("run_1", [result()]);
 
-    expect(mocks.replaceSnapshotFeatures).toHaveBeenCalledWith(
-      [11],
-      [expect.objectContaining({ snapshotId: 11, featureType: "local_pack" })],
-    );
+    expect(mocks.replaceSnapshotDetail).toHaveBeenCalledWith([11], {
+      features: [
+        {
+          snapshotId: 11,
+          featureType: "local_pack",
+          rankAbsolute: 2,
+          clientPresent: true,
+        },
+      ],
+      aioCitations: [
+        {
+          snapshotId: 11,
+          position: 1,
+          domain: "rival.com",
+          url: "https://rival.com/a",
+          isClient: false,
+        },
+        {
+          snapshotId: 11,
+          position: 2,
+          domain: "example.com",
+          url: null,
+          isClient: true,
+        },
+      ],
+    });
+  });
+
+  it("carries the brand mention and snippet onto the snapshot row", async () => {
+    mocks.getSnapshotIdsForRun.mockResolvedValue([existingRow]);
+
+    await persistRankCheckResults("run_1", [result()]);
+
+    expect(mocks.insertSnapshots).toHaveBeenCalledWith([
+      expect.objectContaining({
+        aioBrandMentioned: true,
+        aioSnippet: "Top airway dentists in Houston include…",
+      }),
+    ]);
   });
 });

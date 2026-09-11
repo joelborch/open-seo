@@ -54,6 +54,77 @@ function SerpFeatureTags({ features }: { features: string[] }) {
 }
 
 /**
+ * The AI Overview badge, and the citation detail behind it. The badge itself is
+ * the outcome (cited at position N, or an overview that left the domain out);
+ * hovering or focusing it opens the sources the overview actually drew on and
+ * how it opened, which is what tells a user whether the miss is winnable.
+ * Snapshots taken before citation detail existed have neither, and then the
+ * badge stays a plain badge.
+ */
+function AioBadge({ result }: { result: RankTrackingDeviceResult }) {
+  const { aioClientCited, aioCitationPosition, aioCitations, aioSnippet } =
+    result;
+  const cited = aioClientCited === true;
+  const badge = (
+    <span
+      className={`badge badge-xs gap-0.5 cursor-help border-0 ${
+        cited ? "bg-success/20 text-success" : "bg-warning/20 text-warning"
+      }`}
+      title={
+        cited
+          ? aioCitationPosition != null
+            ? `Cited as source ${aioCitationPosition} in the AI Overview`
+            : "Cited in the AI Overview"
+          : "AI Overview shown, but your domain is not cited in it"
+      }
+    >
+      <Sparkles className="size-2.5" />
+      AIO{cited && aioCitationPosition != null ? ` ${aioCitationPosition}` : ""}
+    </span>
+  );
+  if (aioCitations.length === 0 && !aioSnippet) return badge;
+  return (
+    <div className="dropdown dropdown-hover">
+      <div tabIndex={0} role="button" className="flex">
+        {badge}
+      </div>
+      <div className="dropdown-content z-10 w-64 max-h-56 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+        {aioCitations.length > 0 && (
+          <>
+            <p className="text-[10px] uppercase tracking-wide text-base-content/50">
+              Cited sources
+            </p>
+            <ol className="mt-1 space-y-0.5 text-xs">
+              {aioCitations.map((citation) => (
+                <li
+                  key={citation.position}
+                  className={
+                    citation.isClient
+                      ? "font-semibold text-success"
+                      : "text-base-content/70"
+                  }
+                >
+                  <span className="font-mono text-base-content/40">
+                    {citation.position}.
+                  </span>{" "}
+                  {citation.domain}
+                  {citation.isClient && " (you)"}
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+        {aioSnippet && (
+          <p className="mt-2 border-t border-base-300 pt-2 text-xs text-base-content/60">
+            {aioSnippet}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * SERP-feature cell: the badges that say where the domain itself showed up
  * (local pack rank, AI Overview citation) come first, because those are
  * outcomes rather than page furniture, then the plain feature tags.
@@ -63,8 +134,7 @@ export function SerpSignalTags({
 }: {
   result: RankTrackingDeviceResult;
 }) {
-  const { localPackPosition, aioPresent, aioClientCited, aioCitationPosition } =
-    result;
+  const { localPackPosition, aioPresent } = result;
   const hasFeatureTags = result.serpFeatures.some(
     (f) => f in FEATURE_SHORT_LABELS,
   );
@@ -82,28 +152,7 @@ export function SerpSignalTags({
           {localPackPosition}
         </span>
       )}
-      {aioPresent === true && aioClientCited === true && (
-        <span
-          className="badge badge-xs gap-0.5 cursor-help border-0 bg-success/20 text-success"
-          title={
-            aioCitationPosition != null
-              ? `Cited as source ${aioCitationPosition} in the AI Overview`
-              : "Cited in the AI Overview"
-          }
-        >
-          <Sparkles className="size-2.5" />
-          AIO{aioCitationPosition != null ? ` ${aioCitationPosition}` : ""}
-        </span>
-      )}
-      {aioPresent === true && aioClientCited !== true && (
-        <span
-          className="badge badge-xs gap-0.5 cursor-help border-0 bg-warning/20 text-warning"
-          title="AI Overview shown, but your domain is not cited in it"
-        >
-          <Sparkles className="size-2.5" />
-          AIO
-        </span>
-      )}
+      {aioPresent === true && <AioBadge result={result} />}
       <SerpFeatureTags features={result.serpFeatures} />
     </div>
   );

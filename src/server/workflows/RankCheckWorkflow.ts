@@ -1,3 +1,6 @@
+/* eslint-disable max-lines -- one module for one durable workflow: the prepare,
+   finalize and failure bookkeeping only ever run as that workflow's steps, and
+   splitting them would hide the run lifecycle across files. */
 import {
   WorkflowEntrypoint,
   type WorkflowEvent,
@@ -7,6 +10,7 @@ import { NonRetryableError } from "cloudflare:workflows";
 import { withPgClient } from "@/db";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
+import { resolveBrandTerms } from "@/server/features/rank-tracking/services/brandTerms";
 import { failRunIfActive } from "@/server/features/rank-tracking/services/rankCheckRunGuards";
 import {
   createRankCheckTally,
@@ -65,6 +69,8 @@ function methodForTrigger(
 export async function prepareRankCheckKeywords(input: {
   runId: string;
   configId: string;
+  projectId: string;
+  domain: string;
   billingCustomer: BillingCustomerContext;
   devices: RankCheckParams["devices"];
   serpDepth: number;
@@ -157,6 +163,14 @@ export async function prepareRankCheckKeywords(input: {
       id: kw.id,
       keyword: kw.keyword,
     })),
+    // Only the AI Overview brand-mention check reads these, and resolving them
+    // is two reads — so a run that didn't buy the block doesn't pay for them.
+    brandTerms: input.trackAiOverview
+      ? await resolveBrandTerms({
+          projectId: input.projectId,
+          domain: input.domain,
+        })
+      : [],
   };
 }
 
@@ -413,6 +427,8 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           prepareRankCheckKeywords({
             runId,
             configId,
+            projectId,
+            domain,
             billingCustomer,
             devices,
             serpDepth,
@@ -445,6 +461,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           locationName,
           trackCompetitors: trackCompetitors ?? false,
           trackAiOverview: trackAiOverview ?? false,
+          brandTerms: prepareResult.brandTerms,
           runId,
         };
         // Scheduled checks use DataForSEO's task queue (~30% of live cost);

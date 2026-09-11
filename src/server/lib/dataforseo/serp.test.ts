@@ -1,3 +1,6 @@
+/* eslint-disable max-lines -- one spec for the whole rank-check SERP surface:
+   the live endpoint, task_post, task_get and the shared request params, all read
+   off the same fixtures. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -214,6 +217,36 @@ describe("rank check SERP detail", () => {
       // reference), clderm (element 2 reference), the client (element 2 link),
       // then the block-level asds reference.
       aioCitationPosition: 3,
+      aioCitations: [
+        {
+          position: 1,
+          domain: "healthline.com",
+          url: "https://www.healthline.com/health/beauty-skin-care/laser-treatment-for-acne-scars",
+          isClient: false,
+        },
+        {
+          position: 2,
+          domain: "clderm.com",
+          url: "https://clderm.com/which-laser-procedures-work-best-for-acne-scars",
+          isClient: false,
+        },
+        {
+          position: 3,
+          domain: "chicagodermatology.co",
+          url: "https://www.chicagodermatology.co/",
+          isClient: true,
+        },
+        {
+          position: 4,
+          domain: "asds.net",
+          url: "https://www.asds.net/skin-experts/skin-treatments/laser-resurfacing",
+          isClient: false,
+        },
+      ],
+      // No brand terms were passed, so the mention check has nothing to run on.
+      aioBrandMentioned: null,
+      aioSnippet:
+        "Laser treatment uses focused light and heat… Ablative lasers remove thin layers of skin…",
       serpFeatures: ["ai_overview", "local_pack", "organic"],
       features: [
         { featureType: "ai_overview", rankAbsolute: 1, clientPresent: true },
@@ -438,6 +471,9 @@ describe("rank check task queue", () => {
         aioPresent: null,
         aioClientCited: null,
         aioCitationPosition: null,
+        aioCitations: [],
+        aioBrandMentioned: null,
+        aioSnippet: null,
         serpFeatures: ["organic"],
         features: [
           { featureType: "organic", rankAbsolute: 4, clientPresent: true },

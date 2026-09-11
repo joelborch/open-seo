@@ -351,6 +351,13 @@
       "when": 1789138557843,
       "tag": "0049_lazy_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1789143319193,
+      "tag": "0050_woozy_green_goblin",
+      "breakpoints": true
     }
   ]
 }

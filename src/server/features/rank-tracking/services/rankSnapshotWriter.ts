@@ -7,19 +7,19 @@ export type RankCheckResultWithDevice = RankCheckResult & {
 
 /**
  * Write one batch of check results: the snapshot rows plus their normalized
- * SERP-feature rows, and report the run's distinct keyword count so callers can
- * update progress without a second read.
+ * SERP-feature and AI-Overview-citation rows, and report the run's distinct
+ * keyword count so callers can update progress without a second read.
  *
- * The feature rows need the snapshot ids, which the batched insert doesn't
+ * The detail rows need the snapshot ids, which the batched insert doesn't
  * return, so the ids are read back for the whole run — the same read that
  * yields the progress count. Shared by the live path, the queued collect loop
  * and the on-demand retrieval pass so all three persist identical detail.
  *
  * Snapshot rows are inserted on-conflict-do-nothing per (run, keyword, device),
  * so a result whose row already existed keeps the *earlier* row's values. Its
- * features are therefore left alone too: rewriting them would bolt a live
- * fallback's SERP detail onto a queued snapshot's position, and the keys that
- * already existed before this call are what identifies those.
+ * features and citations are therefore left alone too: rewriting them would bolt
+ * a live fallback's SERP detail onto a queued snapshot's position, and the keys
+ * that already existed before this call are what identifies those.
  */
 export async function persistRankCheckResults(
   runId: string,
@@ -45,6 +45,8 @@ export async function persistRankCheckResults(
       aioPresent: result.aioPresent,
       aioClientCited: result.aioClientCited,
       aioCitationPosition: result.aioCitationPosition,
+      aioBrandMentioned: result.aioBrandMentioned,
+      aioSnippet: result.aioSnippet,
       url: result.url,
       serpFeatures:
         result.serpFeatures.length > 0
@@ -62,10 +64,11 @@ export async function persistRankCheckResults(
   );
 
   const touchedIds: number[] = [];
-  const featureRows = [];
+  const features = [];
+  const aioCitations = [];
   for (const result of results) {
     const key = `${result.keywordId}:${result.device}`;
-    // The base row belongs to an earlier write, so its features do too.
+    // The base row belongs to an earlier write, so its detail rows do too.
     if (preExisting.has(key)) continue;
     const snapshotId = idByKey.get(key);
     // Absent only if the insert was skipped by the (run, keyword, device)
@@ -73,15 +76,27 @@ export async function persistRankCheckResults(
     if (snapshotId === undefined) continue;
     touchedIds.push(snapshotId);
     for (const feature of result.features) {
-      featureRows.push({
+      features.push({
         snapshotId,
         featureType: feature.featureType,
         rankAbsolute: feature.rankAbsolute,
         clientPresent: feature.clientPresent,
       });
     }
+    for (const citation of result.aioCitations) {
+      aioCitations.push({
+        snapshotId,
+        position: citation.position,
+        domain: citation.domain,
+        url: citation.url,
+        isClient: citation.isClient,
+      });
+    }
   }
-  await RankTrackingRepository.replaceSnapshotFeatures(touchedIds, featureRows);
+  await RankTrackingRepository.replaceSnapshotDetail(touchedIds, {
+    features,
+    aioCitations,
+  });
 
   return new Set(snapshots.map((snapshot) => snapshot.trackingKeywordId)).size;
 }

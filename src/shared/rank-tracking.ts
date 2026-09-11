@@ -300,5 +300,7 @@ export function emptyRankTrackingDeviceResult(
     aioPresent: null,
     aioClientCited: null,
     aioCitationPosition: null,
+    aioCitations: [],
+    aioSnippet: null,
   };
 }

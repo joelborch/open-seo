@@ -57,6 +57,7 @@ function makeContext() {
     languageCode: "en",
     trackCompetitors: false,
     trackAiOverview: true,
+    brandTerms: ["Example Dental"],
     runId: "run_1",
   };
 }

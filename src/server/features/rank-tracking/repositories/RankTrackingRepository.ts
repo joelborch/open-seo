@@ -47,7 +47,8 @@ import {
   getSnapshotIdsForRun,
   getSnapshotsForRun,
   insertSnapshots,
-  replaceSnapshotFeatures,
+  replaceSnapshotDetail,
+  getAioCitationsForSnapshots,
 } from "./snapshotQueries";
 
 // ---------------------------------------------------------------------------
@@ -400,7 +401,8 @@ export const RankTrackingRepository = {
   insertSnapshots,
   getSnapshotsForRun,
   getSnapshotIdsForRun,
-  replaceSnapshotFeatures,
+  replaceSnapshotDetail,
+  getAioCitationsForSnapshots,
   reserveRankCheckTasks,
   markRankCheckTasksSubmitted,
   markRankCheckTasksOutcome,

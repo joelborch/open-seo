@@ -355,6 +355,11 @@ export const rankSnapshots = sqliteTable(
     aioPresent: integer("aio_present", { mode: "boolean" }),
     aioClientCited: integer("aio_client_cited", { mode: "boolean" }),
     aioCitationPosition: integer("aio_citation_position"),
+    // Whether the overview's own text named the brand, and the opening of that
+    // text (capped at 500 characters by the parser, as seo-yolo's projection
+    // does). Both null when AI Overview tracking was off for the check.
+    aioBrandMentioned: integer("aio_brand_mentioned", { mode: "boolean" }),
+    aioSnippet: text("aio_snippet"),
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
     checkedAt: text("checked_at")

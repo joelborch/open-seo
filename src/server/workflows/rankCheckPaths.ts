@@ -44,6 +44,9 @@ interface CheckContext {
   /** Config opt-ins; both change what each request buys. */
   trackCompetitors: boolean;
   trackAiOverview: boolean;
+  /** Brand strings an AI Overview's text is checked against, resolved once for
+   *  the run in the prepare step. */
+  brandTerms: string[];
   runId: string;
 }
 
@@ -137,6 +140,7 @@ async function checkBatchLive(
           depth: ctx.serpDepth,
           trackCompetitors: ctx.trackCompetitors,
           trackAiOverview: ctx.trackAiOverview,
+          brandTerms: ctx.brandTerms,
         })
         .then((r) => ({ ...r, device: task.device })),
     ),
@@ -271,6 +275,7 @@ async function collectQueuedRound(
           targetDomain: ctx.domain,
           trackCompetitors: ctx.trackCompetitors,
           trackAiOverview: ctx.trackAiOverview,
+          brandTerms: ctx.brandTerms,
         }),
       ),
     );

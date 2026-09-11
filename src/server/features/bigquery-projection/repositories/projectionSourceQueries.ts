@@ -19,6 +19,7 @@ import {
   mapsGridRuns,
   rankCheckRuns,
   rankSnapshotFeatures,
+  rankSnapshotAioCitations,
   rankSnapshots,
   rankTrackingConfigs,
 } from "@/db/schema";
@@ -95,6 +96,8 @@ export async function getRankRunSource(
       aioPresent: rankSnapshots.aioPresent,
       aioClientCited: rankSnapshots.aioClientCited,
       aioCitationPosition: rankSnapshots.aioCitationPosition,
+      aioBrandMentioned: rankSnapshots.aioBrandMentioned,
+      aioSnippet: rankSnapshots.aioSnippet,
     })
     .from(rankSnapshots)
     .where(eq(rankSnapshots.runId, runId));
@@ -113,6 +116,19 @@ export async function getRankRunSource(
     )
     .where(eq(rankSnapshots.runId, runId));
 
+  const aioCitations = await db
+    .select({
+      snapshotId: rankSnapshotAioCitations.snapshotId,
+      domain: rankSnapshotAioCitations.domain,
+    })
+    .from(rankSnapshotAioCitations)
+    .innerJoin(
+      rankSnapshots,
+      eq(rankSnapshots.id, rankSnapshotAioCitations.snapshotId),
+    )
+    .where(eq(rankSnapshots.runId, runId))
+    .orderBy(rankSnapshotAioCitations.position);
+
   return {
     projectId: run.projectId,
     source: {
@@ -123,6 +139,7 @@ export async function getRankRunSource(
       },
       snapshots,
       features,
+      aioCitations,
     },
   };
 }
