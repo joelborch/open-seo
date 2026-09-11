@@ -293,6 +293,13 @@ const dataEnv = {
   // Alchemy reconciles worker vars on every deploy, so the telemetry opt-out
   // must live in the env file — a dashboard-set var would be wiped.
   OPENSEO_TELEMETRY_DISABLED: optionalVar("OPENSEO_TELEMETRY_DISABLED"),
+  // BigQuery projection (monitoring): a service account with reader on the
+  // Search Console export datasets and writer on the client datasets. Unset
+  // leaves the projection cron a no-op.
+  GCP_PROJECT_ID: optionalVar("GCP_PROJECT_ID"),
+  GCP_BQ_LOCATION: optionalVar("GCP_BQ_LOCATION"),
+  GCP_SA_CLIENT_EMAIL: optionalVar("GCP_SA_CLIENT_EMAIL"),
+  GCP_SA_PRIVATE_KEY: optionalSecret("GCP_SA_PRIVATE_KEY"),
 };
 
 export default Alchemy.Stack(
