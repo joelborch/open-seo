@@ -44,8 +44,10 @@ describe("archiveCrawl", () => {
     // R2 only pulls the gzip stream when something reads the body; drain it so
     // the part's row count is the real one.
     mocks.put.mockImplementation(async (_key: string, body: unknown) => {
+      // R2 refuses a body stream of unknown length, so a part must arrive as
+      // bytes — a regression here fails silently in the finalize guard.
       if (body instanceof ReadableStream) {
-        await new Response(body).arrayBuffer();
+        throw new Error("archive part must be buffered bytes, not a stream");
       }
     });
     // Stands in for the DO, cap included.

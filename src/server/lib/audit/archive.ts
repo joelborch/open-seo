@@ -191,9 +191,11 @@ async function* oneBatch<T>(rows: T[]) {
 }
 
 /**
- * Write one NDJSON part, gzipping as it goes: the batches are encoded into a
- * ReadableStream that `CompressionStream` pulls from, so neither the joined text
- * nor the compressed body is ever fully resident. Returns the row count.
+ * Write one NDJSON part: the batches are encoded into a ReadableStream that
+ * `CompressionStream` pulls from, so the joined text is never fully resident.
+ * The compressed bytes ARE buffered before the put — R2 rejects a body stream
+ * of unknown length, and a gzipped part is bounded by PAGES_PER_PART /
+ * LINKS_PER_PART to a few MB. Returns the row count.
  */
 async function putNdjsonGz(
   key: string,
@@ -221,7 +223,11 @@ async function putNdjsonGz(
     },
   });
 
-  await env.R2.put(key, source.pipeThrough(new CompressionStream("gzip")), {
+  const gzipped = await new Response(
+    source.pipeThrough(new CompressionStream("gzip")),
+  ).arrayBuffer();
+
+  await env.R2.put(key, gzipped, {
     httpMetadata: {
       contentType: "application/x-ndjson",
       contentEncoding: "gzip",
