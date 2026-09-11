@@ -226,6 +226,14 @@ export const rankTrackingConfigs = sqliteTable(
       .notNull()
       .default("weekly"),
     locationName: text("location_name"),
+    // Opt-ins that widen what each check collects (and therefore what it
+    // costs): competitor domains in the same SERP, and AI Overview presence.
+    trackCompetitors: integer("track_competitors", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    trackAiOverview: integer("track_ai_overview", { mode: "boolean" })
+      .notNull()
+      .default(false),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     lastCheckedAt: text("last_checked_at"),
     nextCheckAt: text("next_check_at"),
@@ -299,6 +307,15 @@ export const rankCheckRuns = sqliteTable(
     isSubsetRun: integer("is_subset_run", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Null on rows written before the monitoring build; set on every new run.
+    trigger: text("trigger", { enum: ["manual", "scheduled"] }),
+    method: text("method", { enum: ["live", "queued"] }),
+    // Budget authorized up front vs what the provider actually charged.
+    // `cost_status` says whether the spend is final ("known") or a floor
+    // ("known_minimum", e.g. tasks still unsettled).
+    authorizedCostMicros: integer("authorized_cost_micros"),
+    spentCostMicros: integer("spent_cost_micros"),
+    costStatus: text("cost_status", { enum: ["known", "known_minimum"] }),
     errorMessage: text("error_message"),
     startedAt: text("started_at")
       .notNull()
@@ -329,6 +346,15 @@ export const rankSnapshots = sqliteTable(
     keyword: text("keyword").notNull(),
     device: text("device", { enum: ["desktop", "mobile"] }).notNull(),
     position: integer("position"), // null = not found in top 20
+    // Position across the whole SERP including feature blocks, where
+    // `position` counts organic results only.
+    rankAbsolute: integer("rank_absolute"),
+    localPackPosition: integer("local_pack_position"),
+    // AI Overview: null = not evaluated for this snapshot (feature off, or a
+    // pre-monitoring row), false = evaluated and absent.
+    aioPresent: integer("aio_present", { mode: "boolean" }),
+    aioClientCited: integer("aio_client_cited", { mode: "boolean" }),
+    aioCitationPosition: integer("aio_citation_position"),
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
     checkedAt: text("checked_at")

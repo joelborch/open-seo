@@ -4,6 +4,7 @@
 export * from "../app.schema";
 export * from "../project-context.schema";
 export * from "../audit.schema";
+export * from "../monitoring.schema";
 export * from "../sam.schema";
 export * from "../better-auth-schema";
 export * from "../billing.schema";

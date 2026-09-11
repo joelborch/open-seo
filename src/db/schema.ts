@@ -2,6 +2,7 @@ import { getDatabaseProvider } from "./provider";
 import * as sqliteApp from "./app.schema";
 import * as sqliteProjectContext from "./project-context.schema";
 import * as sqliteAudit from "./audit.schema";
+import * as sqliteMonitoring from "./monitoring.schema";
 import * as sqliteSam from "./sam.schema";
 import * as sqliteAuth from "./better-auth-schema";
 import * as sqliteBilling from "./billing.schema";
@@ -11,6 +12,7 @@ import * as sqliteTelemetry from "./telemetry.schema";
 import * as pgApp from "./pg/app.schema";
 import * as pgProjectContext from "./pg/project-context.schema";
 import * as pgAudit from "./pg/audit.schema";
+import * as pgMonitoring from "./pg/monitoring.schema";
 import * as pgSam from "./pg/sam.schema";
 import * as pgAuth from "./pg/better-auth-schema";
 import * as pgBilling from "./pg/billing.schema";
@@ -31,6 +33,7 @@ import * as pgTelemetry from "./pg/telemetry.schema";
 type AppSchema = typeof sqliteApp &
   typeof sqliteProjectContext &
   typeof sqliteAudit &
+  typeof sqliteMonitoring &
   typeof sqliteSam &
   typeof sqliteAuth &
   typeof sqliteBilling &
@@ -44,6 +47,7 @@ const runtimeSchema =
         ...pgApp,
         ...pgProjectContext,
         ...pgAudit,
+        ...pgMonitoring,
         ...pgSam,
         ...pgAuth,
         ...pgBilling,
@@ -55,6 +59,7 @@ const runtimeSchema =
         ...sqliteApp,
         ...sqliteProjectContext,
         ...sqliteAudit,
+        ...sqliteMonitoring,
         ...sqliteSam,
         ...sqliteAuth,
         ...sqliteBilling,
@@ -88,6 +93,19 @@ export const {
   auditPages,
   auditIssues,
   auditLighthouseResults,
+  auditSchedules,
+  auditScheduleRuns,
+  auditRunIssueCounts,
+  rankCheckTasks,
+  rankSnapshotFeatures,
+  mapsGridLocations,
+  mapsGridLocationMatchTerms,
+  mapsGridConfigs,
+  mapsGridKeywords,
+  mapsGridRuns,
+  mapsGridCells,
+  mapsGridCellResults,
+  projectBigqueryTargets,
   samSessions,
   user,
   session,

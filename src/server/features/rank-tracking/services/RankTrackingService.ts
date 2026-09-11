@@ -121,6 +121,8 @@ async function createConfig(input: {
     serpDepth: input.serpDepth,
     scheduleInterval,
     nextCheckAt,
+    trackCompetitors: false,
+    trackAiOverview: false,
     isActive: true,
     lastCheckedAt: null,
     lastSkipReason: null,

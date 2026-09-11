@@ -230,6 +230,10 @@ export const rankTrackingConfigs = pgTable(
       .notNull()
       .default("weekly"),
     locationName: text("location_name"),
+    // Opt-ins that widen what each check collects (and therefore what it
+    // costs): competitor domains in the same SERP, and AI Overview presence.
+    trackCompetitors: boolean("track_competitors").notNull().default(false),
+    trackAiOverview: boolean("track_ai_overview").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     lastCheckedAt: timestampColumn("last_checked_at"),
     nextCheckAt: timestampColumn("next_check_at"),
@@ -297,6 +301,15 @@ export const rankCheckRuns = pgTable(
     keywordsTotal: integer("keywords_total").notNull().default(0),
     keywordsChecked: integer("keywords_checked").notNull().default(0),
     isSubsetRun: boolean("is_subset_run").notNull().default(false),
+    // Null on rows written before the monitoring build; set on every new run.
+    trigger: text("trigger", { enum: ["manual", "scheduled"] }),
+    method: text("method", { enum: ["live", "queued"] }),
+    // Budget authorized up front vs what the provider actually charged.
+    // `cost_status` says whether the spend is final ("known") or a floor
+    // ("known_minimum", e.g. tasks still unsettled).
+    authorizedCostMicros: bigint("authorized_cost_micros", { mode: "number" }),
+    spentCostMicros: bigint("spent_cost_micros", { mode: "number" }),
+    costStatus: text("cost_status", { enum: ["known", "known_minimum"] }),
     errorMessage: text("error_message"),
     startedAt: timestampColumn("started_at").notNull().default(isoNow),
     completedAt: timestampColumn("completed_at"),
@@ -325,6 +338,15 @@ export const rankSnapshots = pgTable(
     keyword: text("keyword").notNull(),
     device: text("device", { enum: ["desktop", "mobile"] }).notNull(),
     position: integer("position"), // null = not found in top 20
+    // Position across the whole SERP including feature blocks, where
+    // `position` counts organic results only.
+    rankAbsolute: integer("rank_absolute"),
+    localPackPosition: integer("local_pack_position"),
+    // AI Overview: null = not evaluated for this snapshot (feature off, or a
+    // pre-monitoring row), false = evaluated and absent.
+    aioPresent: boolean("aio_present"),
+    aioClientCited: boolean("aio_client_cited"),
+    aioCitationPosition: integer("aio_citation_position"),
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
     checkedAt: timestampColumn("checked_at").notNull().default(isoNow),

@@ -1,0 +1,80 @@
+{
+  "centerLat": 61.2181,
+  "centerLng": -149.9003,
+  "gridSize": 3,
+  "radiusMiles": 10.0,
+  "points": [
+    {
+      "row": 1,
+      "col": 1,
+      "lat": 61.36302753623188,
+      "lng": -150.20055778951658,
+      "direction": "NW",
+      "distanceMiles": 14.127423446409743
+    },
+    {
+      "row": 1,
+      "col": 2,
+      "lat": 61.36302753623188,
+      "lng": -149.9003,
+      "direction": "N",
+      "distanceMiles": 10.01353898341021
+    },
+    {
+      "row": 1,
+      "col": 3,
+      "lat": 61.36302753623188,
+      "lng": -149.6000422104834,
+      "direction": "NE",
+      "distanceMiles": 14.127423446409743
+    },
+    {
+      "row": 2,
+      "col": 1,
+      "lat": 61.2181,
+      "lng": -150.20055778951658,
+      "direction": "W",
+      "distanceMiles": 9.988630985300462
+    },
+    {
+      "row": 2,
+      "col": 2,
+      "lat": 61.2181,
+      "lng": -149.9003,
+      "direction": "Center",
+      "distanceMiles": 0.0
+    },
+    {
+      "row": 2,
+      "col": 3,
+      "lat": 61.2181,
+      "lng": -149.6000422104834,
+      "direction": "E",
+      "distanceMiles": 9.988630985300462
+    },
+    {
+      "row": 3,
+      "col": 1,
+      "lat": 61.07317246376812,
+      "lng": -150.20055778951658,
+      "direction": "SW",
+      "distanceMiles": 14.159904839269686
+    },
+    {
+      "row": 3,
+      "col": 2,
+      "lat": 61.07317246376812,
+      "lng": -149.9003,
+      "direction": "S",
+      "distanceMiles": 10.01353898341021
+    },
+    {
+      "row": 3,
+      "col": 3,
+      "lat": 61.07317246376812,
+      "lng": -149.6000422104834,
+      "direction": "SE",
+      "distanceMiles": 14.159904839269686
+    }
+  ]
+}
