@@ -61,17 +61,20 @@ async function isCovered(input: {
  * `searchAnalytics.query` returns (`keys` in the requested dimension order).
  *
  * Returns null whenever the caller should use the API instead: the project has no
- * export dataset, the export does not cover the window, or BigQuery failed. A
- * BigQuery outage must not take the Search Performance page down with it, so the
+ * export dataset, the export does not cover the window, or any read on this path
+ * failed. Nothing here may take the Search Performance page down with it, so a
  * failure is logged and the API answers.
  */
 async function getSearchPerformanceFromExport(
   input: GscExportRequest,
 ): Promise<GscSearchAnalyticsRow[] | null> {
-  const dataset = await getExportDataset(input.projectId);
-  if (!dataset) return null;
-
   try {
+    // Inside the try on purpose: the target lookup is a database read, and a
+    // failing one has to fall back to the API like any other miss rather than
+    // 500 the Search Performance page.
+    const dataset = await getExportDataset(input.projectId);
+    if (!dataset) return null;
+
     const { projectId: gcpProjectId } = await getBigQueryConfig();
     const covered = await isCovered({
       gcpProjectId,

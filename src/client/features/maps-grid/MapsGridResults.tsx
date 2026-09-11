@@ -112,6 +112,7 @@ export function MapsGridResults({
             projectId={projectId}
             runId={runId}
             configId={configId}
+            runStatus={detail?.run.status ?? null}
           />
         ) : null}
       </div>
@@ -318,10 +319,12 @@ function RetrieveButton({
   projectId,
   runId,
   configId,
+  runStatus,
 }: {
   projectId: string;
   runId: string;
   configId: string;
+  runStatus: string | null;
 }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({
@@ -343,13 +346,21 @@ function RetrieveButton({
       toast.error(getStandardErrorMessage(error, "Couldn't collect the run")),
   });
 
+  // The workflow's own collect rounds replace each cell's rows, so a manual pass
+  // while the run is active would race them; the server refuses it too.
+  const isActive = runStatus === "pending" || runStatus === "running";
+
   return (
     <button
       type="button"
       className="btn btn-ghost btn-sm"
-      disabled={mutation.isPending}
+      disabled={mutation.isPending || isActive}
       onClick={() => mutation.mutate()}
-      title="Collect any cells still outstanding. Costs nothing."
+      title={
+        isActive
+          ? "This run is still collecting on its own."
+          : "Collect any cells still outstanding. Costs nothing."
+      }
     >
       {mutation.isPending ? (
         <Loader2 className="size-4 animate-spin" />

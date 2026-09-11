@@ -66,6 +66,11 @@ export async function markRankCheckTasksSubmitted(
  * Move ledger rows to a terminal (or unknown) state by keyword/device — used
  * for entries DataForSEO refused and for a post step that threw after the
  * request may already have been sent.
+ *
+ * Only rows still in "reserved" are touched: a post step that fails *while
+ * settling* parks its whole chunk, and a row already carrying a provider task
+ * id must keep it — it is collectable, and overwriting it with
+ * submission_unknown would throw away results we paid for.
  */
 export async function markRankCheckTasksOutcome(
   runId: string,
@@ -91,9 +96,39 @@ export async function markRankCheckTasksOutcome(
           eq(rankCheckTasks.runId, runId),
           eq(rankCheckTasks.trackingKeywordId, entry.trackingKeywordId),
           eq(rankCheckTasks.device, entry.device),
+          eq(rankCheckTasks.status, "reserved"),
         ),
       ),
   );
+}
+
+/**
+ * Sweep a run's leftover "reserved" rows to submission_unknown, and report how
+ * many moved.
+ *
+ * A row is only left reserved when the post step that owned it died without
+ * managing to park it, so by the time a run finalizes its request may well have
+ * reached DataForSEO. Parking it is what keeps the pair out of any re-post path
+ * and makes the run's spend read as a floor instead of a settled figure.
+ */
+export async function parkReservedRankCheckTasks(
+  runId: string,
+  reason: string,
+): Promise<number> {
+  const parked = await db
+    .update(rankCheckTasks)
+    .set({
+      status: "submission_unknown",
+      providerStatusMessage: reason.slice(0, 500),
+    })
+    .where(
+      and(
+        eq(rankCheckTasks.runId, runId),
+        eq(rankCheckTasks.status, "reserved"),
+      ),
+    )
+    .returning({ id: rankCheckTasks.id });
+  return parked.length;
 }
 
 /** Record what a task_get said about a submitted task. */
@@ -140,6 +175,11 @@ export async function getSubmittedRankCheckTasks(runId: string) {
 /**
  * Ledger rollup for one run. `submissionUnknown > 0` is what makes a run's
  * spend a floor rather than a settled figure.
+ *
+ * `outstanding` counts "reserved" alongside "submitted": a reserved row is a
+ * request we may have paid for and whose task id we never learned, so leaving it
+ * out of the rollup is exactly how a run reports a settled total while a chunk
+ * of its spend is missing.
  */
 export async function getRankCheckTaskCostSummary(runId: string) {
   const rows = await db
@@ -147,7 +187,7 @@ export async function getRankCheckTaskCostSummary(runId: string) {
       actualCostMicros: sql<number>`coalesce(sum(${rankCheckTasks.actualCostMicros}), 0)`,
       reservedCostMicros: sql<number>`coalesce(sum(${rankCheckTasks.reservedCostMicros}), 0)`,
       submissionUnknown: sql<number>`coalesce(sum(case when ${rankCheckTasks.status} = 'submission_unknown' then 1 else 0 end), 0)`,
-      outstanding: sql<number>`coalesce(sum(case when ${rankCheckTasks.status} = 'submitted' then 1 else 0 end), 0)`,
+      outstanding: sql<number>`coalesce(sum(case when ${rankCheckTasks.status} in ('submitted', 'reserved') then 1 else 0 end), 0)`,
     })
     .from(rankCheckTasks)
     .where(eq(rankCheckTasks.runId, runId));

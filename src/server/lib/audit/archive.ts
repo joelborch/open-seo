@@ -26,11 +26,10 @@ import {
   getIssueRowsForArchive,
   getPageRowsForArchive,
 } from "@/server/features/audit/repositories/auditArchiveQueries";
+import { AUDIT_LINK_EXPORT_MAX_ROWS } from "@/shared/audit-limits";
 
 /** Page rows per DB read, and per pages part — one read fills one part. */
 const PAGES_PER_PART = 1_000;
-/** Rows per exportLinks RPC; the DO caps it at the same number. */
-const LINKS_PER_RPC = 2_000;
 /** Edges per links part — 10 RPC pages, so parts stay a useful scan unit. */
 const LINKS_PER_PART = 20_000;
 /** Issue rows per DB read; issues are one streamed file, not sharded. */
@@ -134,11 +133,16 @@ async function archiveLinks(prefix: string, auditId: string) {
     parts.push(part);
   };
 
+  // The DO caps a page at this same constant, so a page shorter than the limit we
+  // asked for is the end of the edges — comparing against anything else would
+  // truncate the archive at the first full page.
+  const limit = AUDIT_LINK_EXPORT_MAX_ROWS;
+
   for (;;) {
     const page = await scratchpad.exportLinks({
       afterSourcePageId: cursor?.sourcePageId ?? null,
       afterTargetUrl: cursor?.targetUrl ?? null,
-      limit: LINKS_PER_RPC,
+      limit,
     });
     linkGraphComplete = page.linkGraphComplete;
     const last = page.links[page.links.length - 1];
@@ -149,9 +153,9 @@ async function archiveLinks(prefix: string, auditId: string) {
     while (buffer.length >= LINKS_PER_PART) {
       await writePart(buffer.splice(0, LINKS_PER_PART));
     }
-    if (page.links.length < LINKS_PER_RPC) {
-      // Short page means the frontier of edges is done; flush the remainder so
-      // there is no empty trailing part.
+    if (page.links.length < limit) {
+      // Short page means the edges are done; flush the remainder so there is no
+      // empty trailing part.
       if (buffer.length > 0) await writePart(buffer.splice(0));
       break;
     }

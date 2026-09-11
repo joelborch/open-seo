@@ -48,3 +48,23 @@ describe("computeNextDeepAt", () => {
     expect(computeNextDeepAt(5, 4)).toBe("2026-09-18T04:00:00.000Z");
   });
 });
+
+// Saving a schedule re-derives its cursor from the cursor it already holds, so a
+// pending slot has to survive the round trip — otherwise every save (even one
+// that changes nothing) pushes the next run out by a full interval.
+describe("a still-future anchor", () => {
+  it.each([
+    {
+      cadence: "quick",
+      slot: "2026-09-12T03:00:00.000Z",
+      compute: () => computeNextQuickAt(3, "2026-09-12T03:00:00.000Z"),
+    },
+    {
+      cadence: "deep",
+      slot: "2026-09-14T04:00:00.000Z",
+      compute: () => computeNextDeepAt(1, 4, "2026-09-14T04:00:00.000Z"),
+    },
+  ])("is returned unchanged for the $cadence cadence", ({ slot, compute }) => {
+    expect(compute()).toBe(slot);
+  });
+});

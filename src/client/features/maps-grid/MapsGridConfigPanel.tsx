@@ -133,13 +133,15 @@ export function MapsGridConfigPanel({
       toast.error(getStandardErrorMessage(error, "Couldn't price the run")),
   });
 
+  // The approved price is the argument, not a field read off state at call
+  // time: a run can only be started from a price the user has actually seen.
   const runMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (authorizedCostMicros: number) =>
       startGridRun({
         data: {
           projectId,
           configId: config?.id ?? "",
-          authorizedCostMicros: plan?.totalCostMicros,
+          authorizedCostMicros,
         },
       }),
     onSuccess: async (result) => {
@@ -237,8 +239,20 @@ export function MapsGridConfigPanel({
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                disabled={runMutation.isPending || keywords.length === 0}
-                onClick={() => runMutation.mutate()}
+                disabled={
+                  runMutation.isPending ||
+                  keywords.length === 0 ||
+                  plan === null
+                }
+                title={
+                  plan === null
+                    ? "Preview the run to see what it will cost, then start it."
+                    : undefined
+                }
+                onClick={() => {
+                  if (!plan) return;
+                  runMutation.mutate(plan.totalCostMicros);
+                }}
               >
                 {runMutation.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -260,7 +274,8 @@ export function MapsGridConfigPanel({
                 </p>
               ) : (
                 <p className="text-sm text-base-content/50">
-                  Each cell is one charged Google Maps request.
+                  Preview the run first — each cell is one charged Google Maps
+                  request.
                 </p>
               )}
             </div>

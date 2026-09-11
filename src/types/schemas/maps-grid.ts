@@ -125,8 +125,12 @@ export const startGridRunSchema = z.object({
    * Price the user approved from the preview, in provider micro-dollars. The run
    * is refused when the plan grew past it — a keyword added between preview and
    * confirm must not be bought silently.
+   *
+   * Required: optional, it made the whole approval gate skippable by starting a
+   * run before the preview had loaded. A scheduled run has no preview and is not
+   * started through this schema; its cadence is the authorization.
    */
-  authorizedCostMicros: z.number().int().min(0).optional(),
+  authorizedCostMicros: z.number().int().min(0),
 });
 
 export const retrieveGridRunSchema = z.object({

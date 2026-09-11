@@ -76,6 +76,32 @@ function nextRunAtFor(
   return computeNextCheckAt(scheduleInterval, previous);
 }
 
+/**
+ * The cursor a saved edit should leave behind.
+ *
+ * computeNextCheckAt always advances past its anchor, so recomputing from a
+ * cursor that is still in the future pushes the next run out by a whole interval
+ * — save a weekly grid four times and it never runs. An unchanged cadence with a
+ * pending slot therefore keeps that slot untouched; a changed cadence, a missing
+ * cursor, or one already due is recomputed.
+ */
+function nextRunAtForUpdate(input: {
+  scheduleInterval: GridConfigFields["scheduleInterval"];
+  previousInterval: string;
+  previousNextRunAt: string | null;
+}): string | null {
+  if (input.scheduleInterval === "manual") return null;
+  if (input.previousInterval !== input.scheduleInterval) {
+    return nextRunAtFor(input.scheduleInterval);
+  }
+  const pending =
+    input.previousNextRunAt !== null &&
+    new Date(input.previousNextRunAt).getTime() > Date.now();
+  return pending
+    ? input.previousNextRunAt
+    : nextRunAtFor(input.scheduleInterval, input.previousNextRunAt);
+}
+
 export async function createConfig(input: {
   projectId: string;
   locationId: string;
@@ -104,17 +130,14 @@ export async function updateConfig(input: {
   const existing = await MapsGridRepository.getConfigById(input);
   if (!existing) throw new AppError("NOT_FOUND", "Grid config not found");
 
-  // Recompute the cursor from the saved one so an unchanged cadence keeps its
-  // slot instead of drifting to "a week from this edit".
   await MapsGridRepository.updateConfig(input, {
     ...input.fields,
     depth: input.fields.depth ?? null,
-    nextRunAt: nextRunAtFor(
-      input.fields.scheduleInterval,
-      existing.scheduleInterval === input.fields.scheduleInterval
-        ? existing.nextRunAt
-        : null,
-    ),
+    nextRunAt: nextRunAtForUpdate({
+      scheduleInterval: input.fields.scheduleInterval,
+      previousInterval: existing.scheduleInterval,
+      previousNextRunAt: existing.nextRunAt,
+    }),
     // A saved edit clears a stale badge; the scheduler writes a new reason on
     // its next skip.
     lastSkipReason: null,

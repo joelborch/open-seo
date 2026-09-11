@@ -68,6 +68,11 @@ export async function markMapsGridCellsSubmitted(
  * Move cells to a terminal (or unknown) state without a provider task id — for
  * entries DataForSEO refused, and for a post step that threw after the request
  * may already have reached the provider.
+ *
+ * Only cells still in "reserved" are touched: a post step that fails *while
+ * settling* parks its whole chunk, and a cell that already carries a provider
+ * task id must keep it — it is collectable, and overwriting it would throw away
+ * a pack we already paid for.
  */
 export async function markMapsGridCellsOutcome(
   entries: Array<{
@@ -83,8 +88,40 @@ export async function markMapsGridCellsOutcome(
         taskStatus: entry.status,
         providerStatusCode: entry.providerStatusCode ?? null,
       })
-      .where(eq(mapsGridCells.tag, entry.tag)),
+      .where(
+        and(
+          eq(mapsGridCells.tag, entry.tag),
+          eq(mapsGridCells.taskStatus, "reserved"),
+        ),
+      ),
   );
+}
+
+/**
+ * Sweep a run's leftover "reserved" cells to submission_unknown, and report how
+ * many moved.
+ *
+ * Once every post step of a run has had its turn, a cell still sitting at
+ * reserved is one whose post step died without managing to park it, so its
+ * request may well have reached DataForSEO. Parking it keeps the cell out of any
+ * re-post path and makes the run's spend read as a floor rather than a settled
+ * figure — left as reserved it is counted by neither, and the workflow keeps
+ * polling for a task id that will never exist.
+ */
+export async function parkReservedMapsGridCells(
+  runId: string,
+): Promise<number> {
+  const parked = await db
+    .update(mapsGridCells)
+    .set({ taskStatus: "submission_unknown" })
+    .where(
+      and(
+        eq(mapsGridCells.runId, runId),
+        eq(mapsGridCells.taskStatus, "reserved"),
+      ),
+    )
+    .returning({ id: mapsGridCells.id });
+  return parked.length;
 }
 
 /** Record what a task_get said about a submitted cell, and where we ranked. */

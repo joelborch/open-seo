@@ -124,6 +124,10 @@ export const auditScheduleRuns = sqliteTable(
       table.scheduleId,
       table.triggeredAt,
     ),
+    // Every audit finalize looks its run up by audit_id (finishScheduleRun), and
+    // manual audits — the common case — pay a full table scan to learn they have
+    // no run row.
+    index("audit_schedule_runs_audit_idx").on(table.auditId),
   ],
 );
 

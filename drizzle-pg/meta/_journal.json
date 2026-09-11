@@ -183,6 +183,13 @@
       "when": 1789128778964,
       "tag": "0025_long_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789131671073,
+      "tag": "0026_plain_magdalene",
+      "breakpoints": true
     }
   ]
 }

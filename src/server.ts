@@ -6,12 +6,8 @@ import { routeAgentRequest } from "agents";
 import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
-import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
-import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
-import { runScheduledCrawls } from "@/server/features/audit-schedules/services/scheduledCrawls";
-import { runScheduledGridRuns } from "@/server/features/maps-grid/services/scheduledGridRuns";
-import { runPendingProjections } from "@/server/features/bigquery-projection/services/BigqueryProjectionService";
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
+import { runCronLoops } from "@/server/lib/cron-loops";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
 import {
@@ -225,58 +221,6 @@ export default {
       return;
     }
 
-    // Watchdog first: reconcile audits stuck in "running" whose workflow died
-    // without reaching mark-failed (OOM/CPU kills, expired instances). Runs
-    // before the rank loop so a slow tick can't delay or starve it. Its
-    // failure is held until after the rank checks so it can't suppress them,
-    // then rethrown so the invocation still reports as failed.
-    let watchdogError: unknown;
-    try {
-      await withPgClient(() => reconcileStaleAudits());
-    } catch (err) {
-      watchdogError = err;
-      console.error("[cron] Stale-audit reconcile failed:", err);
-    }
-    // Scheduled crawls next: they start Workflow instances and do no metered
-    // provider work, so a slow rank tick shouldn't delay them. Held and
-    // rethrown for the same reason as the watchdog above — a failing crawl
-    // scheduler must not suppress the rank checks, but the invocation must
-    // still report as failed.
-    let crawlSchedulerError: unknown;
-    try {
-      await withPgClient(() => runScheduledCrawls());
-    } catch (err) {
-      crawlSchedulerError = err;
-      console.error("[cron] Scheduled crawls failed:", err);
-    }
-    // Scope a per-request Postgres client for the cron run (no-op in D1 mode).
-    await withPgClient(() => runScheduledRankChecks(env));
-    // Scheduled local-pack grids: metered like the rank checks, so they run
-    // after them and behind their own cell budget. Held and rethrown for the
-    // same reason as the schedulers above — a failing grid tick must not
-    // suppress the projection below, but the invocation must still report as
-    // failed.
-    let gridSchedulerError: unknown;
-    try {
-      await withPgClient(() => runScheduledGridRuns());
-    } catch (err) {
-      gridSchedulerError = err;
-      console.error("[cron] Scheduled grid runs failed:", err);
-    }
-    // BigQuery projection last: it reads runs the loops above just completed, and
-    // it spends nothing of ours, so it gets whatever is left of the tick. Held
-    // and rethrown like the schedulers above — a warehouse outage must not mask a
-    // rank-check failure, but the invocation must still report as failed.
-    let projectionError: unknown;
-    try {
-      await withPgClient(() => runPendingProjections());
-    } catch (err) {
-      projectionError = err;
-      console.error("[cron] BigQuery projection failed:", err);
-    }
-    if (watchdogError) throw watchdogError;
-    if (crawlSchedulerError) throw crawlSchedulerError;
-    if (gridSchedulerError) throw gridSchedulerError;
-    if (projectionError) throw projectionError;
+    await runCronLoops(env);
   },
 };

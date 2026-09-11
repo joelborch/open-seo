@@ -9,6 +9,7 @@ import { MapsGridRepository } from "@/server/features/maps-grid/repositories/Map
 import { collectGridCells } from "@/server/features/maps-grid/services/mapsGridCollector";
 import { computeRunRollups } from "@/server/features/maps-grid/services/mapsGridRollups";
 import { matchIdentityForLocation } from "@/server/features/maps-grid/services/MapsGridService";
+import { failGridRunWithLedger } from "@/server/features/maps-grid/services/mapsGridRunGuards";
 import {
   createDataforseoClient,
   fetchMapsTasksReady,
@@ -130,6 +131,12 @@ async function loadGridRunContext(
  * submission_unknown, which is the one state this pipeline never re-posts from —
  * the request may have reached DataForSEO, and buying it again would be a second
  * charge for results the provider is already holding.
+ *
+ * The post and the writes that settle it share one non-retrying step, so the
+ * catch covers both: a database failure *after* the charge would otherwise
+ * strand the chunk at "reserved", which nothing collects and no cost rollup
+ * counts. Parking only moves cells still at "reserved", so a cell whose task id
+ * did land keeps it and stays collectable.
  */
 async function postCellChunk(input: {
   runId: string;
@@ -140,9 +147,8 @@ async function postCellChunk(input: {
   const { ctx, chunk } = input;
   const client = createDataforseoClient(input.billingCustomer);
 
-  let result: Awaited<ReturnType<typeof client.serp.mapsGridTaskPost>>;
   try {
-    result = await client.serp.mapsGridTaskPost({
+    const result = await client.serp.mapsGridTaskPost({
       tasks: chunk.map((cell) => ({
         tag: cell.tag,
         keyword: cell.keyword,
@@ -154,33 +160,42 @@ async function postCellChunk(input: {
         depth: ctx.depth ?? undefined,
       })),
     });
-  } catch (error) {
-    await MapsGridRepository.markCellsOutcome(
-      chunk.map((cell) => ({
-        tag: cell.tag,
-        status: "submission_unknown" as const,
+
+    await MapsGridRepository.markCellsSubmitted(
+      result.posted.map((task) => ({
+        tag: task.tag,
+        providerTaskId: task.taskId,
+        actualCostMicros: usdToMicros(task.costUsd),
       })),
     );
+    if (result.rejected.length > 0) {
+      await MapsGridRepository.markCellsOutcome(
+        result.rejected.map((task) => ({
+          tag: task.tag,
+          status: "failed" as const,
+          providerStatusCode: task.statusCode,
+        })),
+      );
+    }
+    return { posted: result.posted.length, rejected: result.rejected.length };
+  } catch (error) {
+    try {
+      await MapsGridRepository.markCellsOutcome(
+        chunk.map((cell) => ({
+          tag: cell.tag,
+          status: "submission_unknown" as const,
+        })),
+      );
+    } catch (parkError) {
+      // Even parking failed: the cells stay at "reserved", where finalize's
+      // sweep picks them up, and the original failure is what matters here.
+      console.error(
+        `[maps-grid] ${input.runId} could not park an unsettled chunk:`,
+        parkError,
+      );
+    }
     throw error;
   }
-
-  await MapsGridRepository.markCellsSubmitted(
-    result.posted.map((task) => ({
-      tag: task.tag,
-      providerTaskId: task.taskId,
-      actualCostMicros: usdToMicros(task.costUsd),
-    })),
-  );
-  if (result.rejected.length > 0) {
-    await MapsGridRepository.markCellsOutcome(
-      result.rejected.map((task) => ({
-        tag: task.tag,
-        status: "failed" as const,
-        providerStatusCode: task.statusCode,
-      })),
-    );
-  }
-  return { posted: result.posted.length, rejected: result.rejected.length };
 }
 
 /**
@@ -228,6 +243,18 @@ async function finalizeGridRun(input: {
       `[maps-grid] ${input.runId} no longer active (status=${run?.status ?? "missing"}), skipping finalization`,
     );
     return;
+  }
+
+  // Every post step has had its turn by now, so a cell still at "reserved" is
+  // one whose step died without parking it — its request may have reached
+  // DataForSEO. Sweeping those to submission_unknown before the rollup is what
+  // stops the run from polling for a task id that will never exist and from
+  // reporting a settled total with a chunk of its spend missing.
+  const parked = await MapsGridRepository.parkReservedCells(input.runId);
+  if (parked > 0) {
+    console.warn(
+      `[maps-grid] ${input.runId} parked ${parked} unsettled cell(s) as submission_unknown`,
+    );
   }
 
   const summary = await MapsGridRepository.getCellCostSummary(input.runId);
@@ -301,17 +328,17 @@ async function finalizeGridRun(input: {
   });
 }
 
+/**
+ * A run that fell over outside finalization still has to say what it bought: the
+ * chunks it did post were charged. failGridRunWithLedger reads the cell ledger
+ * for that figure, so the failure path is accounted the same way the reaper
+ * accounts a run whose workflow vanished.
+ */
 async function markGridRunFailed(input: { runId: string; error: unknown }) {
-  const run = await MapsGridRepository.getRunById(input.runId);
-  if (!run || run.status === "completed" || run.status === "failed") return;
-  await MapsGridRepository.updateRun(input.runId, {
-    status: "failed",
-    errorMessage:
-      input.error instanceof Error
-        ? input.error.message.slice(0, 500)
-        : "Unknown error",
-    completedAt: new Date().toISOString(),
-  });
+  await failGridRunWithLedger(
+    input.runId,
+    input.error instanceof Error ? input.error.message : "Unknown error",
+  );
 }
 
 export class MapsGridWorkflow extends WorkflowEntrypoint<Env, MapsGridParams> {

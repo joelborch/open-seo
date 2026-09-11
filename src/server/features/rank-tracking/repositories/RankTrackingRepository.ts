@@ -33,6 +33,7 @@ import {
   markRankCheckTasksCollected,
   markRankCheckTasksOutcome,
   markRankCheckTasksSubmitted,
+  parkReservedRankCheckTasks,
   reserveRankCheckTasks,
 } from "./rankCheckTaskQueries";
 import {
@@ -402,6 +403,7 @@ export const RankTrackingRepository = {
   markRankCheckTasksSubmitted,
   markRankCheckTasksOutcome,
   markRankCheckTasksCollected,
+  parkReservedRankCheckTasks,
   getSubmittedRankCheckTasks,
   getRankCheckTaskCostSummary,
   getKeywordsForConfig,

@@ -1,0 +1,1 @@
+CREATE INDEX "audit_schedule_runs_audit_idx" ON "audit_schedule_runs" USING btree ("audit_id");

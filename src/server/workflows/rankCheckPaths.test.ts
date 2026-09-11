@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowStep } from "cloudflare:workers";
-import { runQueuedCheck } from "./rankCheckPaths";
+import { createRankCheckTally, runQueuedCheck } from "./rankCheckPaths";
 
 const mocks = vi.hoisted(() => ({
   reserveRankCheckTasks: vi.fn(),
@@ -86,7 +86,8 @@ describe("queued rank check task ledger", () => {
       result: { keywordId: "kw-1", keyword: "alpha" },
     });
 
-    const stats = await runQueuedCheck(step, makeContext());
+    const tally = createRankCheckTally();
+    await runQueuedCheck(step, makeContext(), tally);
 
     // Ordering is the whole point: a row must exist before the request that
     // might charge for it.
@@ -119,18 +120,19 @@ describe("queued rank check task ledger", () => {
         providerStatusCode: 20000,
       },
     ]);
-    expect(stats).toMatchObject({
+    expect(tally).toMatchObject({
       queueTasks: 1,
       queueCollected: 1,
       fallbackTasks: 0,
-      submissionUnknown: 0,
+      liveCostMicros: 0,
     });
   });
 
   it("marks a throwing post submission_unknown and never re-buys those pairs", async () => {
     mocks.rankCheckTaskPost.mockRejectedValue(new Error("socket hang up"));
 
-    const stats = await runQueuedCheck(step, makeContext());
+    const tally = createRankCheckTally();
+    await runQueuedCheck(step, makeContext(), tally);
 
     expect(mocks.markRankCheckTasksOutcome).toHaveBeenCalledWith("run_1", [
       expect.objectContaining({
@@ -141,10 +143,10 @@ describe("queued rank check task ledger", () => {
     ]);
     // No live fallback: the request may have been charged already.
     expect(mocks.rankCheck).not.toHaveBeenCalled();
-    expect(stats).toMatchObject({
+    expect(tally).toMatchObject({
       queueTasks: 0,
       fallbackTasks: 0,
-      submissionUnknown: 1,
+      liveCostMicros: 0,
     });
   });
 
@@ -167,7 +169,8 @@ describe("queued rank check task ledger", () => {
       providerCostUsd: 0.0042,
     });
 
-    const stats = await runQueuedCheck(step, makeContext());
+    const tally = createRankCheckTally();
+    await runQueuedCheck(step, makeContext(), tally);
 
     expect(mocks.markRankCheckTasksOutcome).toHaveBeenCalledWith("run_1", [
       {
@@ -178,10 +181,78 @@ describe("queued rank check task ledger", () => {
         providerStatusMessage: "Task Limit Exceeded",
       },
     ]);
-    expect(stats).toMatchObject({
+    expect(tally).toMatchObject({
       fallbackTasks: 1,
       fallbackChecked: 1,
-      fallbackCostMicros: 4200,
+      liveCostMicros: 4200,
     });
+  });
+  it("parks the chunk when settling a successful post fails, and never re-posts it", async () => {
+    mocks.rankCheckTaskPost.mockResolvedValue({
+      posted: [
+        {
+          keyword: "alpha",
+          keywordId: "kw-1",
+          device: "desktop",
+          taskId: "task-a",
+          costUsd: 0.0012,
+        },
+      ],
+      rejected: [],
+    });
+    // The charge landed; the write that records its task id is what fails.
+    mocks.markRankCheckTasksSubmitted.mockRejectedValue(
+      new Error("D1 write failed"),
+    );
+
+    const tally = createRankCheckTally();
+    await runQueuedCheck(step, makeContext(), tally);
+
+    expect(mocks.markRankCheckTasksOutcome).toHaveBeenCalledWith("run_1", [
+      expect.objectContaining({
+        trackingKeywordId: "kw-1",
+        device: "desktop",
+        status: "submission_unknown",
+      }),
+    ]);
+    // One post, and no live re-buy of a pair DataForSEO may already hold.
+    expect(mocks.rankCheckTaskPost).toHaveBeenCalledTimes(1);
+    expect(mocks.rankCheck).not.toHaveBeenCalled();
+    expect(tally).toMatchObject({ queueTasks: 0, fallbackTasks: 0 });
+  });
+
+  it("keeps fallback spend already incurred when a later fallback batch throws", async () => {
+    // Eleven pairs all refused at post: two live-fallback batches (10 + 1).
+    const keywords = Array.from({ length: 11 }, (_, index) => ({
+      id: `kw-${index}`,
+      keyword: `keyword ${index}`,
+    }));
+    mocks.rankCheckTaskPost.mockResolvedValue({
+      posted: [],
+      rejected: keywords.map((kw) => ({
+        keyword: kw.keyword,
+        keywordId: kw.id,
+        device: "desktop",
+        statusCode: 40006,
+        statusMessage: "Task Limit Exceeded",
+      })),
+    });
+    mocks.rankCheck.mockImplementation(
+      (input: { keywordId: string; keyword: string }) =>
+        Promise.resolve({ ...input, providerCostUsd: 0.0042 }),
+    );
+    mocks.persistRankCheckResults
+      .mockResolvedValueOnce(10)
+      .mockRejectedValueOnce(new Error("D1 write failed"));
+
+    const tally = createRankCheckTally();
+    await expect(
+      runQueuedCheck(step, { ...makeContext(), keywords }, tally),
+    ).rejects.toThrow("D1 write failed");
+
+    // The first batch's ten live calls were charged and must survive the throw,
+    // so finalize can report them instead of a confident zero.
+    expect(tally.liveCostMicros).toBe(42_000);
+    expect(tally.fallbackChecked).toBe(10);
   });
 });

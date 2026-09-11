@@ -21,6 +21,7 @@ import {
   markMapsGridCellsCollected,
   markMapsGridCellsOutcome,
   markMapsGridCellsSubmitted,
+  parkReservedMapsGridCells,
   replaceMapsGridCellResults,
   reserveMapsGridCells,
 } from "@/server/features/maps-grid/repositories/mapsGridCellQueries";
@@ -450,6 +451,7 @@ export const MapsGridRepository = {
   markCellsSubmitted: markMapsGridCellsSubmitted,
   markCellsOutcome: markMapsGridCellsOutcome,
   markCellsCollected: markMapsGridCellsCollected,
+  parkReservedCells: parkReservedMapsGridCells,
   getReservedCells: getReservedMapsGridCells,
   getSubmittedCells: getSubmittedMapsGridCells,
   replaceCellResults: replaceMapsGridCellResults,

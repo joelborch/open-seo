@@ -9,9 +9,10 @@ import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import { failRunIfActive } from "@/server/features/rank-tracking/services/rankCheckRunGuards";
 import {
+  createRankCheckTally,
   runLiveCheck,
   runQueuedCheck,
-  type QueuedCheckStats,
+  type RankCheckTally,
 } from "@/server/workflows/rankCheckPaths";
 import { pgStep } from "@/server/workflows/pgStep";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
@@ -161,34 +162,38 @@ export async function prepareRankCheckKeywords(input: {
 
 /**
  * What the run actually spent at DataForSEO, in micro-dollars, and whether that
- * figure is final. The live path knows each call's charge as it returns; the
- * queued path reads its task ledger, where a submission whose outcome we never
- * learned makes the total a floor rather than a settled amount.
+ * figure is final.
+ *
+ * The task ledger is read no matter how the run ended — a queued run that died
+ * mid-post still has rows recording what DataForSEO charged, and a live run
+ * simply has none, so there is no path where a failure reports a confident
+ * zero. Live-endpoint calls (the live path and the queued path's fallback) are
+ * added from the tally, which the caller accumulated per step.
+ *
+ * The total is a floor rather than a settled amount whenever spend could be
+ * unaccounted: a submission whose outcome we never learned, a task still
+ * outstanding, or a step that threw after it may already have bought something.
  */
 async function summarizeRunSpend(
   runId: string,
-  input: { queueStats: QueuedCheckStats | null; liveCostMicros: number | null },
+  input: { tally: RankCheckTally; batchError: string | null },
 ): Promise<{
   spentCostMicros: number;
   costStatus: "known" | "known_minimum";
+  submissionUnknown: number;
+  outstanding: number;
 }> {
-  if (!input.queueStats) {
-    return {
-      spentCostMicros: input.liveCostMicros ?? 0,
-      costStatus: "known",
-    };
-  }
   const ledger =
     await RankTrackingRepository.getRankCheckTaskCostSummary(runId);
+  const unaccounted =
+    ledger.submissionUnknown > 0 ||
+    ledger.outstanding > 0 ||
+    input.batchError !== null;
   return {
-    spentCostMicros:
-      ledger.actualCostMicros + input.queueStats.fallbackCostMicros,
-    // Unknown submissions may have been charged without a task id to settle,
-    // and a task still outstanding hasn't reported its final cost.
-    costStatus:
-      ledger.submissionUnknown > 0 || ledger.outstanding > 0
-        ? "known_minimum"
-        : "known",
+    spentCostMicros: ledger.actualCostMicros + input.tally.liveCostMicros,
+    costStatus: unaccounted ? "known_minimum" : "known",
+    submissionUnknown: ledger.submissionUnknown,
+    outstanding: ledger.outstanding,
   };
 }
 
@@ -199,10 +204,8 @@ async function finalizeRankCheckRun(input: {
   billingCustomer: BillingCustomerContext;
   trigger: RankCheckParams["trigger"];
   batchError: string | null;
-  queueStats: QueuedCheckStats | null;
-  /** Live-path spend, in provider micro-dollars. Null on the queued path,
-   *  where the task ledger is the source of truth. */
-  liveCostMicros: number | null;
+  /** Spend and progress the check path accumulated step by step. */
+  tally: RankCheckTally;
 }) {
   // If stale-cleanup already marked our run failed, don't overwrite that
   // decision with a completed status — a replacement run may already be
@@ -235,9 +238,24 @@ async function finalizeRankCheckRun(input: {
     errorMessage = `${incompleteCount} keyword(s) could not be checked`;
   }
 
+  // Any ledger row still at "reserved" belongs to a post step that died without
+  // parking it, so its request may have reached DataForSEO. Sweeping it to
+  // submission_unknown before reading the spend is what keeps the pair out of
+  // every re-post path and the run's total honest. A live run has no ledger
+  // rows, so this is a no-op there.
+  const parked = await RankTrackingRepository.parkReservedRankCheckTasks(
+    input.runId,
+    "Post step ended without settling this task",
+  );
+  if (parked > 0) {
+    console.warn(
+      `[rank-check] ${input.runId} parked ${parked} unsettled task(s) as submission_unknown`,
+    );
+  }
+
   const spend = await summarizeRunSpend(input.runId, {
-    queueStats: input.queueStats,
-    liveCostMicros: input.liveCostMicros,
+    tally: input.tally,
+    batchError: input.batchError,
   });
 
   // Flipping status away from 'pending'/'running' is what releases the
@@ -261,9 +279,10 @@ async function finalizeRankCheckRun(input: {
 
   // One-line summary per run so fallback rates are visible in Workers Logs.
   // Keys match the PostHog event properties for log/event correlation.
-  const queueSummary = input.queueStats
-    ? ` queue_tasks=${input.queueStats.queueTasks} queue_collected=${input.queueStats.queueCollected} fallback_tasks=${input.queueStats.fallbackTasks} fallback_checked=${input.queueStats.fallbackChecked} submission_unknown=${input.queueStats.submissionUnknown}`
-    : "";
+  const queueSummary =
+    run.method === "queued"
+      ? ` queue_tasks=${input.tally.queueTasks} queue_collected=${input.tally.queueCollected} fallback_tasks=${input.tally.fallbackTasks} fallback_checked=${input.tally.fallbackChecked} submission_unknown=${spend.submissionUnknown} outstanding=${spend.outstanding}`
+      : "";
   // Error text can echo vendor/user content — keep it one line and bounded.
   const errorSummary = errorMessage
     ? ` error="${errorMessage.replace(/\s+/g, " ").slice(0, 200)}"`
@@ -283,13 +302,14 @@ async function finalizeRankCheckRun(input: {
       keywords_checked: keywordsChecked,
       spent_cost_micros: spend.spentCostMicros,
       cost_status: spend.costStatus,
-      ...(input.queueStats
+      ...(run.method === "queued"
         ? {
-            queue_tasks: input.queueStats.queueTasks,
-            queue_collected: input.queueStats.queueCollected,
-            fallback_tasks: input.queueStats.fallbackTasks,
-            fallback_checked: input.queueStats.fallbackChecked,
-            submission_unknown: input.queueStats.submissionUnknown,
+            queue_tasks: input.tally.queueTasks,
+            queue_collected: input.tally.queueCollected,
+            fallback_tasks: input.tally.fallbackTasks,
+            fallback_checked: input.tally.fallbackChecked,
+            submission_unknown: spend.submissionUnknown,
+            outstanding: spend.outstanding,
           }
         : {}),
     },
@@ -409,8 +429,9 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
       console.log(`[rank-check] ${runId} loaded ${keywords.length} keywords`);
 
       let batchError: string | null = null;
-      let queueStats: QueuedCheckStats | null = null;
-      let liveCostMicros: number | null = null;
+      // Owned here, not returned by the check path: a batch or post step that
+      // throws must not take the spend already accumulated with it.
+      const tally = createRankCheckTally();
 
       try {
         const checkContext = {
@@ -429,9 +450,9 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
         // Scheduled checks use DataForSEO's task queue (~30% of live cost);
         // manual checks stay on the live endpoint for instant results.
         if (trigger === "scheduled") {
-          queueStats = await runQueuedCheck(step, checkContext);
+          await runQueuedCheck(step, checkContext, tally);
         } else {
-          liveCostMicros = await runLiveCheck(step, checkContext);
+          await runLiveCheck(step, checkContext, tally);
         }
       } catch (error) {
         // Batch failure — snapshots for completed batches are already
@@ -448,8 +469,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           billingCustomer,
           trigger,
           batchError,
-          queueStats,
-          liveCostMicros,
+          tally,
         }),
       );
     } catch (error) {

@@ -14,12 +14,24 @@ export type RankCheckResultWithDevice = RankCheckResult & {
  * return, so the ids are read back for the whole run — the same read that
  * yields the progress count. Shared by the live path, the queued collect loop
  * and the on-demand retrieval pass so all three persist identical detail.
+ *
+ * Snapshot rows are inserted on-conflict-do-nothing per (run, keyword, device),
+ * so a result whose row already existed keeps the *earlier* row's values. Its
+ * features are therefore left alone too: rewriting them would bolt a live
+ * fallback's SERP detail onto a queued snapshot's position, and the keys that
+ * already existed before this call are what identifies those.
  */
 export async function persistRankCheckResults(
   runId: string,
   results: RankCheckResultWithDevice[],
 ): Promise<number> {
   if (results.length === 0) return 0;
+
+  const preExisting = new Set(
+    (await RankTrackingRepository.getSnapshotIdsForRun(runId)).map(
+      (snapshot) => `${snapshot.trackingKeywordId}:${snapshot.device}`,
+    ),
+  );
 
   await RankTrackingRepository.insertSnapshots(
     results.map((result) => ({
@@ -52,7 +64,10 @@ export async function persistRankCheckResults(
   const touchedIds: number[] = [];
   const featureRows = [];
   for (const result of results) {
-    const snapshotId = idByKey.get(`${result.keywordId}:${result.device}`);
+    const key = `${result.keywordId}:${result.device}`;
+    // The base row belongs to an earlier write, so its features do too.
+    if (preExisting.has(key)) continue;
+    const snapshotId = idByKey.get(key);
     // Absent only if the insert was skipped by the (run, keyword, device)
     // conflict target for a row this batch didn't own — nothing to attach to.
     if (snapshotId === undefined) continue;

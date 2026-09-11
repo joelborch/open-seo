@@ -34,7 +34,6 @@ type ExportGrain = {
   keys: string[];
   /** The rank-sum column whose mean is the reported position. */
   rankColumn: string;
-  orderColumn: string;
 };
 
 const GRAINS: Record<GscExportDimension, ExportGrain> = {
@@ -45,14 +44,12 @@ const GRAINS: Record<GscExportDimension, ExportGrain> = {
     selections: ["query"],
     keys: ["query"],
     rankColumn: "sum_top_position",
-    orderColumn: "impressions",
   },
   page: {
     table: URL_TABLE,
     selections: ["url AS page"],
     keys: ["page"],
     rankColumn: "sum_position",
-    orderColumn: "clicks",
   },
   // Keys are (query, page) — the order `dimensions: ["query","page"]` returns
   // from the API, which is what the striking-distance report reads.
@@ -61,7 +58,6 @@ const GRAINS: Record<GscExportDimension, ExportGrain> = {
     selections: ["query", "url AS page"],
     keys: ["query", "page"],
     rankColumn: "sum_position",
-    orderColumn: "clicks",
   },
 };
 
@@ -131,7 +127,10 @@ export function buildExportSql(input: {
     `FROM \`${input.gcpProjectId}.${input.dataset}.${grain.table}\``,
     `WHERE data_date BETWEEN @since AND @until AND search_type = 'WEB'${anonymized}`,
     `GROUP BY ${grain.keys.join(", ")}`,
-    `ORDER BY ${grain.orderColumn} DESC, ${grain.keys[0]} ASC`,
+    // Search Analytics sorts every report by clicks, so the export has to as
+    // well — a row cap applied to a differently-ordered set returns different
+    // rows, and the two paths must be interchangeable.
+    `ORDER BY clicks DESC, ${grain.keys[0]} ASC`,
     `LIMIT ${limit}`,
   ].join(" ");
 }

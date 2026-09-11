@@ -5,6 +5,8 @@ import {
   desc,
   eq,
   isNotNull,
+  isNull,
+  or,
   sql,
 } from "drizzle-orm";
 import { db } from "@/db";
@@ -38,11 +40,31 @@ export async function getIssueTypePageCountsForAudit(auditId: string) {
  * `pagesConsidered` is the denominator: pages we actually fetched (fetch_class
  * 'ok') and that are indexable — blocked/errored fetches and noindex pages are
  * neither scoreable nor the site's fault to the same degree. The severity
- * counts partition DISTINCT page urls by their WORST issue, so a page with a
+ * counts partition those SAME pages by their WORST issue, so a page with a
  * critical and a warning issue is one error page and not also a warning page;
  * without that a heavily-flagged page would be penalized several times over.
+ *
+ * Numerator and denominator have to cover one set of pages or the score is
+ * arithmetic nonsense: a robots-blocked page carries a critical blocked-page
+ * issue and a noindex page carries an info one, so scoring them while leaving
+ * them out of `pagesConsidered` can push a healthy site's score down (or below
+ * zero) on pages we deliberately refuse to judge. Hence the join below.
  */
 export async function getSiteHealthInputsForAudit(auditId: string) {
+  const isConsidered = and(
+    eq(auditPages.auditId, auditId),
+    eq(auditPages.fetchClass, "ok"),
+    eq(auditPages.isIndexable, true),
+  );
+
+  const consideredPages = db
+    .select({ id: auditPages.id, url: auditPages.url })
+    .from(auditPages)
+    .where(isConsidered)
+    .as("considered_pages");
+
+  // Issues written per page carry page_id; the link-graph checks and anything
+  // reported before its page row lands only have the url, so match on either.
   const worstPerPage = db
     .select({
       worst:
@@ -51,20 +73,24 @@ export async function getSiteHealthInputsForAudit(auditId: string) {
           .as("worst"),
     })
     .from(auditIssues)
+    .innerJoin(
+      consideredPages,
+      or(
+        eq(auditIssues.pageId, consideredPages.id),
+        and(
+          isNull(auditIssues.pageId),
+          eq(auditIssues.pageUrl, consideredPages.url),
+        ),
+      ),
+    )
     .where(eq(auditIssues.auditId, auditId))
-    .groupBy(auditIssues.pageUrl)
+    .groupBy(consideredPages.id)
     .as("worst_per_page");
 
   const pagesConsidered = db
     .select({ pages: count() })
     .from(auditPages)
-    .where(
-      and(
-        eq(auditPages.auditId, auditId),
-        eq(auditPages.fetchClass, "ok"),
-        eq(auditPages.isIndexable, true),
-      ),
-    );
+    .where(isConsidered);
 
   // Aggregates with no GROUP BY, so an audit with zero issues still returns one
   // row (all-zero severity counts) rather than none.

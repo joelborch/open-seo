@@ -18,6 +18,7 @@
  * every insert is OR IGNORE / OR REPLACE on a stable key.
  */
 import { DurableObject, env } from "cloudflare:workers";
+import { AUDIT_LINK_EXPORT_MAX_ROWS } from "@/shared/audit-limits";
 
 export interface ClaimedUrl {
   url: string;
@@ -103,12 +104,6 @@ const CLEANUP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
  * budget the crawl continues — the audit just loses link-graph issues.
  */
 const LINK_STORAGE_BUDGET_BYTES = 500 * 1024 * 1024;
-/**
- * Ceiling on one exportLinks page. RPC results are serialized into a single
- * message capped at 1 MiB; 2,000 rows of source/target URL plus anchor text
- * stays well under it even for long URLs.
- */
-const EXPORT_LINKS_MAX_ROWS = 2_000;
 
 export class AuditScratchpad extends DurableObject {
   constructor(ctx: DurableObjectState, workerEnv: Env) {
@@ -338,7 +333,7 @@ export class AuditScratchpad extends DurableObject {
    * primary key (source_page_id, target_url), which is also the cursor, so a
    * retried archive step re-reads exactly the same rows in the same order.
    *
-   * `limit` is capped at EXPORT_LINKS_MAX_ROWS: RPC results cross the DO
+   * `limit` is capped at AUDIT_LINK_EXPORT_MAX_ROWS: RPC results cross the DO
    * boundary as one serialized message, and a link row is ~200 bytes of URL, so
    * a caller asking for everything at once would blow the message limit.
    */
@@ -347,7 +342,7 @@ export class AuditScratchpad extends DurableObject {
     afterTargetUrl: string | null;
     limit: number;
   }): Promise<{ links: ScratchpadLinkRow[]; linkGraphComplete: boolean }> {
-    const limit = Math.min(input.limit, EXPORT_LINKS_MAX_ROWS);
+    const limit = Math.min(input.limit, AUDIT_LINK_EXPORT_MAX_ROWS);
     const select = `SELECT source_page_id, source_url, target_url, anchor, is_nofollow FROM links`;
     const order = `ORDER BY source_page_id, target_url LIMIT ?`;
     const cursor =

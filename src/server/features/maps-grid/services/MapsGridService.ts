@@ -10,6 +10,10 @@ import {
   getGridRuns,
   getGridTrend,
 } from "@/server/features/maps-grid/services/mapsGridReads";
+import {
+  failGridRunWithLedger,
+  staleGridRunReason,
+} from "@/server/features/maps-grid/services/mapsGridRunGuards";
 import { AppError } from "@/server/lib/errors";
 import { buildGridPoints, type MatchIdentity } from "@/shared/maps-grid";
 import { costPerSerpAtDepth, usdToMicros } from "@/shared/rank-tracking";
@@ -160,61 +164,89 @@ export async function startGridRun(input: {
     );
   }
 
-  const runId = crypto.randomUUID();
-  const created = await MapsGridRepository.tryCreateRun({
-    id: runId,
-    configId: plan.configId,
-    projectId: plan.projectId,
-    trigger: input.trigger,
-    cellsTotal: plan.cellsTotal,
-    authorizedCostMicros: input.authorizedCostMicros ?? plan.totalCostMicros,
-  });
-  if (!created) {
-    // The partial unique index rejected the insert: another run is in flight.
-    const blocker = await MapsGridRepository.getActiveRunForConfig(
-      plan.configId,
-    );
-    return {
-      dryRun: false,
-      plan,
-      ok: false,
-      reason: "already_running",
-      blockingRunId: blocker?.id ?? null,
-    };
-  }
-
-  await MapsGridRepository.reserveCells(buildReservedCells(plan, runId));
-
-  try {
-    await env.MAPS_GRID_WORKFLOW.create({
+  // At most two attempts: once normally, once after clearing a blocker whose
+  // workflow died. Without the second pass a run that lost its instance holds
+  // the config's one-active slot forever, and every later trigger — cron
+  // included — reports already_running.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const runId = crypto.randomUUID();
+    const created = await MapsGridRepository.tryCreateRun({
       id: runId,
-      params: {
-        runId,
-        configId: plan.configId,
-        projectId: plan.projectId,
-        locationId: plan.locationId,
-        billingCustomer: input.billingCustomer,
-        trigger: input.trigger,
-      },
+      configId: plan.configId,
+      projectId: plan.projectId,
+      trigger: input.trigger,
+      cellsTotal: plan.cellsTotal,
+      authorizedCostMicros: input.authorizedCostMicros ?? plan.totalCostMicros,
     });
-  } catch (error) {
-    // Flip the run to failed so the partial-index slot is released, then
-    // best-effort clean up any zombie instance.
-    await MapsGridRepository.updateRun(runId, {
-      status: "failed",
-      errorMessage: "Failed to start the grid workflow",
-      completedAt: new Date().toISOString(),
-    });
-    try {
-      const instance = await env.MAPS_GRID_WORKFLOW.get(runId);
-      await instance.terminate();
-    } catch {
-      // The instance may never have been created.
+
+    if (!created) {
+      // The partial unique index rejected the insert: another run is in flight.
+      const blocker = await MapsGridRepository.getActiveRunForConfig(
+        plan.configId,
+      );
+      // Raced: the blocker settled between the insert and this read. Loop.
+      if (!blocker) continue;
+
+      if (attempt === 0) {
+        const staleReason = await staleGridRunReason(blocker);
+        if (staleReason) {
+          await failGridRunWithLedger(blocker.id, staleReason);
+          continue; // the slot is free now — retry the insert
+        }
+      }
+
+      return {
+        dryRun: false,
+        plan,
+        ok: false,
+        reason: "already_running",
+        blockingRunId: blocker.id,
+      };
     }
-    throw error;
+
+    try {
+      await MapsGridRepository.reserveCells(buildReservedCells(plan, runId));
+      await env.MAPS_GRID_WORKFLOW.create({
+        id: runId,
+        params: {
+          runId,
+          configId: plan.configId,
+          projectId: plan.projectId,
+          locationId: plan.locationId,
+          billingCustomer: input.billingCustomer,
+          trigger: input.trigger,
+        },
+      });
+    } catch (error) {
+      // Covers the cell reservation as well as the workflow create: either way
+      // nothing was posted, so flip the run to failed to release the
+      // partial-index slot, then best-effort clean up any zombie instance.
+      await MapsGridRepository.updateRun(runId, {
+        status: "failed",
+        errorMessage: "Failed to start the grid workflow",
+        completedAt: new Date().toISOString(),
+      });
+      try {
+        const instance = await env.MAPS_GRID_WORKFLOW.get(runId);
+        await instance.terminate();
+      } catch {
+        // The instance may never have been created.
+      }
+      throw error;
+    }
+
+    return { dryRun: false, plan, ok: true, runId };
   }
 
-  return { dryRun: false, plan, ok: true, runId };
+  // Exhausted both attempts (rapid churn on this config). Report the blocker.
+  const final = await MapsGridRepository.getActiveRunForConfig(plan.configId);
+  return {
+    dryRun: false,
+    plan,
+    ok: false,
+    reason: "already_running",
+    blockingRunId: final?.id ?? null,
+  };
 }
 
 /**
@@ -255,10 +287,22 @@ function buildReservedCells(plan: MapsGridRunPlan, runId: string) {
  * already in the ledger, and task_get is free, so this settles whatever the
  * provider is holding and leaves the run's own finalize (or the next call) to
  * finish the accounting.
+ *
+ * Refused while the run is still active. A collect pass replaces each cell's
+ * ranked rows by deleting and re-inserting them, so running one against a
+ * workflow that is mid-collect interleaves two delete/insert pairs on the same
+ * cells and can leave a pack duplicated. A stranded run reaches
+ * completed/failed on its own — the workflow finalizes it, or the reaper does.
  */
 async function retrieveGridRun(input: { runId: string; projectId: string }) {
   const run = await MapsGridRepository.getRunForProject(input);
   if (!run) throw new AppError("NOT_FOUND", "Grid run not found");
+  if (run.status === "pending" || run.status === "running") {
+    throw new AppError(
+      "CONFLICT",
+      "This run is still collecting its cells. Wait for it to finish, then collect whatever is left over.",
+    );
+  }
 
   const config = await MapsGridRepository.getConfigForRun(run.configId);
   const location = config

@@ -1,3 +1,6 @@
+/* eslint-disable max-lines -- the twin of src/db/monitoring.schema.ts, which
+   carries the same waiver: one schema file per migration phase, read as one
+   unit, and the two files have to stay line-for-line comparable. */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -119,6 +122,10 @@ export const auditScheduleRuns = pgTable(
       table.scheduleId,
       table.triggeredAt,
     ),
+    // Every audit finalize looks its run up by audit_id (finishScheduleRun), and
+    // manual audits — the common case — pay a full table scan to learn they have
+    // no run row.
+    index("audit_schedule_runs_audit_idx").on(table.auditId),
   ],
 );
 

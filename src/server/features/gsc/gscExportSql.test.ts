@@ -3,6 +3,7 @@ import {
   buildCoverageSql,
   buildExportSql,
   exportDimensionFor,
+  GSC_EXPORT_DIMENSIONS,
   isWindowCovered,
 } from "./gscExportSql";
 
@@ -34,7 +35,7 @@ describe("buildExportSql", () => {
         " SAFE_DIVIDE(SUM(sum_top_position), SUM(impressions)) + 1 AS position" +
         " FROM `gmail-for-forwarding.searchconsole.searchdata_site_impression`" +
         " WHERE data_date BETWEEN @since AND @until AND search_type = 'WEB' AND NOT is_anonymized_query" +
-        " GROUP BY query ORDER BY impressions DESC, query ASC LIMIT 1000",
+        " GROUP BY query ORDER BY clicks DESC, query ASC LIMIT 1000",
     );
   });
 
@@ -57,6 +58,18 @@ describe("buildExportSql", () => {
     expect(sql).toContain("GROUP BY query, page");
     expect(sql).toContain("AND NOT is_anonymized_query");
   });
+
+  // The row cap makes ordering part of the result set, not a cosmetic detail: an
+  // impressions-ordered top 25,000 is a different set of rows than the API's
+  // clicks-ordered one, and the two paths have to be interchangeable.
+  it.each(GSC_EXPORT_DIMENSIONS)(
+    "orders the %s grain by clicks, like Search Analytics",
+    (dimension) => {
+      expect(buildExportSql({ ...BASE, dimension, limit: 10 })).toContain(
+        "ORDER BY clicks DESC",
+      );
+    },
+  );
 
   it("clamps the row limit rather than interpolating it raw", () => {
     expect(
