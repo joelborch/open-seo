@@ -27,6 +27,10 @@ declare namespace Cloudflare {
 		// unrelated runtime-type drift (see cf-typegen); keep this in sync until then.
 		SITE_AUDIT_WORKFLOW: Workflow<Parameters<import("./src/audit-worker").SiteAuditWorkflow['run']>[0]['payload']>;
 		RANK_CHECK_WORKFLOW: Workflow<Parameters<import("./src/server").RankCheckWorkflow['run']>[0]['payload']>;
+		// Hand-patched for the same reason as SITE_AUDIT_WORKFLOW above: a full
+		// `cf-typegen` regen against the installed wrangler rewrites thousands of
+		// unrelated runtime-type lines.
+		MAPS_GRID_WORKFLOW: Workflow<Parameters<import("./src/server").MapsGridWorkflow['run']>[0]['payload']>;
 	}
 }
 interface Env extends Cloudflare.Env {}

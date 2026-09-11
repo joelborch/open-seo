@@ -176,6 +176,13 @@
       "when": 1789127035925,
       "tag": "0024_curious_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789128778964,
+      "tag": "0025_long_wendigo",
+      "breakpoints": true
     }
   ]
 }

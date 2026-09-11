@@ -324,8 +324,14 @@ const isDirectRun =
     process.argv[1].endsWith("seed-monitoring"));
 
 if (isDirectRun) {
-  main().catch((err) => {
-    console.error(`\nError: ${(err as Error).message}`);
+  main().catch((err: unknown) => {
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === "string"
+          ? err
+          : "Unknown error";
+    console.error(`\nError: ${message}`);
     process.exit(1);
   });
 }

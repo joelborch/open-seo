@@ -9,6 +9,8 @@ import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
 import { runScheduledCrawls } from "@/server/features/audit-schedules/services/scheduledCrawls";
+import { runScheduledGridRuns } from "@/server/features/maps-grid/services/scheduledGridRuns";
+import { runPendingProjections } from "@/server/features/bigquery-projection/services/BigqueryProjectionService";
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
@@ -183,6 +185,7 @@ function handleFetch(
 // AuditScratchpad DO live in the open-seo-audit aux worker
 // (src/audit-worker.ts); this worker reaches them via cross-script bindings.
 export { RankCheckWorkflow } from "./server/workflows/RankCheckWorkflow";
+export { MapsGridWorkflow } from "./server/workflows/MapsGridWorkflow";
 // Durable Object class for the onboarding strategy chat (Agents SDK).
 export { OnboardingChatAgent } from "./server/features/onboarding/OnboardingChatAgent";
 // Durable Object class for the SAM in-app agent (Agents SDK).
@@ -248,7 +251,32 @@ export default {
     }
     // Scope a per-request Postgres client for the cron run (no-op in D1 mode).
     await withPgClient(() => runScheduledRankChecks(env));
+    // Scheduled local-pack grids: metered like the rank checks, so they run
+    // after them and behind their own cell budget. Held and rethrown for the
+    // same reason as the schedulers above — a failing grid tick must not
+    // suppress the projection below, but the invocation must still report as
+    // failed.
+    let gridSchedulerError: unknown;
+    try {
+      await withPgClient(() => runScheduledGridRuns());
+    } catch (err) {
+      gridSchedulerError = err;
+      console.error("[cron] Scheduled grid runs failed:", err);
+    }
+    // BigQuery projection last: it reads runs the loops above just completed, and
+    // it spends nothing of ours, so it gets whatever is left of the tick. Held
+    // and rethrown like the schedulers above — a warehouse outage must not mask a
+    // rank-check failure, but the invocation must still report as failed.
+    let projectionError: unknown;
+    try {
+      await withPgClient(() => runPendingProjections());
+    } catch (err) {
+      projectionError = err;
+      console.error("[cron] BigQuery projection failed:", err);
+    }
     if (watchdogError) throw watchdogError;
     if (crawlSchedulerError) throw crawlSchedulerError;
+    if (gridSchedulerError) throw gridSchedulerError;
+    if (projectionError) throw projectionError;
   },
 };

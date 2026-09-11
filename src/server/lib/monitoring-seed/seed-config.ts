@@ -22,6 +22,16 @@ import {
 
 export * from "./seed-schemas";
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (typeof err === "string") {
+    return err;
+  }
+  return "Unknown error";
+}
+
 export function parseProjectMapping(input: unknown): ProjectMapping {
   let parsed = input;
   if (typeof input === "string") {
@@ -31,7 +41,7 @@ export function parseProjectMapping(input: unknown): ProjectMapping {
         parsed = JSON.parse(trimmed);
       } catch (err) {
         throw new Error(
-          `Invalid JSON in project mapping string: ${(err as Error).message}`,
+          `Invalid JSON in project mapping string: ${getErrorMessage(err)}`,
           { cause: err },
         );
       }
@@ -44,7 +54,7 @@ export function parseProjectMapping(input: unknown): ProjectMapping {
         parsed = JSON.parse(fileContent);
       } catch (err) {
         throw new Error(
-          `Failed to read or parse mapping file "${trimmed}": ${(err as Error).message}`,
+          `Failed to read or parse mapping file "${trimmed}": ${getErrorMessage(err)}`,
           { cause: err },
         );
       }
@@ -67,7 +77,7 @@ export function parseClientProfile(input: unknown): SeoYoloProfile {
       parsed = JSON.parse(input);
     } catch (err) {
       throw new Error(
-        `Failed to parse profile JSON string: ${(err as Error).message}`,
+        `Failed to parse profile JSON string: ${getErrorMessage(err)}`,
         { cause: err },
       );
     }
@@ -88,7 +98,7 @@ export function parseAhrefsClientsConfig(input: unknown): AhrefsClientsConfig {
       parsed = JSON.parse(input);
     } catch (err) {
       throw new Error(
-        `Failed to parse ahrefs clients JSON string: ${(err as Error).message}`,
+        `Failed to parse ahrefs clients JSON string: ${getErrorMessage(err)}`,
         { cause: err },
       );
     }
@@ -109,7 +119,7 @@ export function parseMapsConfig(input: unknown): MapsConfig {
       parsed = JSON.parse(input);
     } catch (err) {
       throw new Error(
-        `Failed to parse maps config JSON string: ${(err as Error).message}`,
+        `Failed to parse maps config JSON string: ${getErrorMessage(err)}`,
         { cause: err },
       );
     }
@@ -155,7 +165,7 @@ export function parseGscExportDatasets(
     : { ...DEFAULT_GSC_EXPORT_DATASETS };
 }
 
-export type DiscoverClientsOptions = {
+type DiscoverClientsOptions = {
   seoYoloRoot?: string;
   ahrefsClientsConfigPath?: string;
   readFileFn?: (path: string) => string;
@@ -241,7 +251,7 @@ export function discoverClients(
   return discovered;
 }
 
-export type BuildSeedingPlanOptions = {
+type BuildSeedingPlanOptions = {
   discoveredClients?: DiscoveredClient[];
   clientDatasets?: Record<string, string>;
   gscExportDatasets?: Record<string, string>;

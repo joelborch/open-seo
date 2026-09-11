@@ -50,7 +50,7 @@ function stopCrawlOnTarget(targetDomain: string) {
 }
 
 /** Config opt-ins that change what a rank-check request buys. */
-export interface RankCheckCollectionOptions {
+interface RankCheckCollectionOptions {
   /** Keep crawling past the target's listing so competitor ranks are captured
    *  too. Costs every page of `depth` instead of stopping early. */
   trackCompetitors?: boolean;
@@ -178,12 +178,12 @@ export interface PostedRankCheckTask extends RankCheckTaskInput {
 }
 
 /** An entry DataForSEO refused, kept so the ledger can record why. */
-export interface RejectedRankCheckTask extends RankCheckTaskInput {
+interface RejectedRankCheckTask extends RankCheckTaskInput {
   statusCode: number | null;
   statusMessage: string | null;
 }
 
-export interface RankCheckTaskPostResult {
+interface RankCheckTaskPostResult {
   posted: PostedRankCheckTask[];
   rejected: RejectedRankCheckTask[];
 }

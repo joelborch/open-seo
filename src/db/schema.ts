@@ -106,6 +106,7 @@ export const {
   mapsGridCells,
   mapsGridCellResults,
   projectBigqueryTargets,
+  bigqueryProjections,
   samSessions,
   user,
   session,

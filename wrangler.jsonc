@@ -36,6 +36,11 @@
       "binding": "RANK_CHECK_WORKFLOW",
       "class_name": "RankCheckWorkflow",
     },
+    {
+      "name": "maps-grid-workflow",
+      "binding": "MAPS_GRID_WORKFLOW",
+      "class_name": "MapsGridWorkflow",
+    },
   ],
   // Durable Object backing the onboarding strategy chat (Agents SDK
   // AIChatAgent). One instance per project; messages persist in the DO's

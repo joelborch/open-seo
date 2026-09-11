@@ -51,7 +51,7 @@ export const SeoYoloProfileSchema = z
   .passthrough();
 export type SeoYoloProfile = z.infer<typeof SeoYoloProfileSchema>;
 
-export const AhrefsClientEntrySchema = z
+const AhrefsClientEntrySchema = z
   .object({
     slug: z.string().min(1),
     name: z.string().optional(),
@@ -62,7 +62,6 @@ export const AhrefsClientEntrySchema = z
     monthly_maps_keywords: z.array(z.string()).optional(),
   })
   .passthrough();
-export type AhrefsClientEntry = z.infer<typeof AhrefsClientEntrySchema>;
 
 export const AhrefsClientsConfigSchema = z
   .object({
@@ -71,7 +70,7 @@ export const AhrefsClientsConfigSchema = z
   .passthrough();
 export type AhrefsClientsConfig = z.infer<typeof AhrefsClientsConfigSchema>;
 
-export const MapsLocationSchema = z
+const MapsLocationSchema = z
   .object({
     name: z.string().min(1),
     slug: z.string().min(1),
@@ -89,7 +88,6 @@ export const MapsLocationSchema = z
     match_terms: z.array(z.string()).default([]),
   })
   .passthrough();
-export type MapsLocation = z.infer<typeof MapsLocationSchema>;
 
 export const MapsConfigSchema = z
   .object({
@@ -165,9 +163,4 @@ export interface ClientSeedPlan {
     configSource?: string;
     locations: LocationSeedPlan[];
   };
-}
-
-export interface SeedingPlan {
-  clients: ClientSeedPlan[];
-  unmappedClientKeys: string[];
 }

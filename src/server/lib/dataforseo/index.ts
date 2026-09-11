@@ -28,6 +28,10 @@ export { normalizeBacklinksTarget } from "@/server/lib/dataforseoBacklinksTarget
 // free ($0), so a zero-credit org can still list them.
 export { fetchRankCheckTaskResult } from "@/server/lib/dataforseo/serp";
 export {
+  fetchMapsTasksReady,
+  fetchMapsTaskResult,
+} from "@/server/lib/dataforseo/mapsTasks";
+export {
   fetchBusinessDataTaskResult,
   fetchBusinessListingsCategories,
   type BusinessTaskEndpoint,

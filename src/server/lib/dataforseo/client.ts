@@ -47,6 +47,7 @@ import {
   fetchRankCheckSerp,
   postRankCheckTasks,
 } from "@/server/lib/dataforseo/serp";
+import { postMapsGridTasks } from "@/server/lib/dataforseo/mapsTasks";
 import { fetchLighthouseResult } from "@/server/lib/dataforseo/lighthouse";
 import {
   fetchLlmAggregatedMetrics,
@@ -126,6 +127,9 @@ export function createDataforseoClient(customer: BillingCustomerContext) {
       // free).
       rankCheckTaskPost: meter(customer, postRankCheckTasks, "rank_tracking"),
       local: meter(customer, fetchLocalSerp, "local_seo"),
+      // Posts up to 100 queued Maps grid-point tasks; one metered charge covers
+      // the batch, and collection (tasks_ready / task_get) is free and unmetered.
+      mapsGridTaskPost: meter(customer, postMapsGridTasks, "local_seo"),
     },
     labs: {
       // Callers (e.g. the keyword-metrics MCP tool) can attribute the spend to

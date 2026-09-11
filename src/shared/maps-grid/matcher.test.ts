@@ -2,72 +2,45 @@ import { describe, expect, it } from "vitest";
 import {
   findTarget,
   isBrandMatch,
+  mapsCandidateItemSchema,
+  scoreCandidate,
   type CandidateItem,
   type MatchIdentity,
-  scoreCandidate,
 } from "./matcher.js";
 import matcherFixture from "./fixtures/matcher-cases.json";
+
+/** Fixture rows are provider-shaped, so they go through the real item schema. */
+function candidate(row: unknown): CandidateItem {
+  return mapsCandidateItemSchema.parse(row);
+}
 
 describe("maps-grid matcher", () => {
   describe("Python parity fixtures", () => {
     const identity: MatchIdentity = matcherFixture.identity;
 
     for (const testCase of matcherFixture.cases) {
-      it(`matches Python decision for case: ${testCase.id} (${testCase.description})`, () => {
-        const result = scoreCandidate(testCase.candidate, identity);
-
-        expect(result.score).toBe(testCase.expected.score);
-        expect(result.reasons).toEqual(testCase.expected.reasons);
-        expect(result.hard).toBe(testCase.expected.hard);
-        expect(result.accepted).toBe(testCase.expected.accepted);
-
-        // Verify tuple destructuring support
-        const [score, reasons, hard, accepted] = result as unknown as [
-          number,
-          string[],
-          boolean,
-          boolean,
-        ];
-        expect(score).toBe(testCase.expected.score);
-        expect(reasons).toEqual(testCase.expected.reasons);
-        expect(hard).toBe(testCase.expected.hard);
-        expect(accepted).toBe(testCase.expected.accepted);
+      it(`matches the Python decision for ${testCase.id} (${testCase.description})`, () => {
+        expect(scoreCandidate(candidate(testCase.candidate), identity)).toEqual(
+          testCase.expected,
+        );
       });
     }
 
-    it("matches Python findTarget decision across candidate pool", () => {
-      const result = findTarget(
-        matcherFixture.findTargetTest.candidates,
-        identity,
-      );
+    it("picks the same target and brand fallback out of the candidate pool", () => {
+      const { candidates, expectedTargetTitle, expectedBrandFallbackTitle } =
+        matcherFixture.findTargetTest;
 
-      expect(result.target?.title).toBe(
-        matcherFixture.findTargetTest.expectedTargetTitle,
-      );
-      expect(result.brandFallback?.title).toBe(
-        matcherFixture.findTargetTest.expectedBrandFallbackTitle,
-      );
+      const result = findTarget(candidates.map(candidate), identity);
+
+      expect(result.target?.title).toBe(expectedTargetTitle);
+      expect(result.brandFallback?.title).toBe(expectedBrandFallbackTitle);
       expect(result.reasons).toEqual(
         matcherFixture.findTargetTest.expectedReasons,
       );
-
-      // Verify tuple destructuring
-      const [target, brandFallback, reasons] = result as unknown as [
-        CandidateItem | null,
-        CandidateItem | null,
-        string[],
-      ];
-      expect(target?.title).toBe(
-        matcherFixture.findTargetTest.expectedTargetTitle,
-      );
-      expect(brandFallback?.title).toBe(
-        matcherFixture.findTargetTest.expectedBrandFallbackTitle,
-      );
-      expect(reasons).toEqual(matcherFixture.findTargetTest.expectedReasons);
     });
   });
 
-  describe("rank resolution and tie-breaking", () => {
+  describe("target selection", () => {
     const identity: MatchIdentity = {
       brandName: "Apex Dental",
       domain: "apexdental.com",
@@ -75,64 +48,69 @@ describe("maps-grid matcher", () => {
       matchTerms: ["seattle"],
     };
 
-    it("favors candidate with higher score when ranks differ", () => {
-      const lowScoreLowRank: CandidateItem = {
+    it("prefers the higher score over the better rank", () => {
+      // brand (4) + term (2) = 6, soft — never accepted however well it ranks.
+      const betterRanked: CandidateItem = {
         title: "Apex Dental Office",
         address: "100 Pine St, Seattle",
-        rankGroup: 1, // score: brand (4) + term (2) = 6 (not hard, not accepted)
+        rank_group: 1,
       };
-      const highScoreHighRank: CandidateItem = {
+      // domain (3) + term (2) + location_url (4) = 9, hard.
+      const higherScored: CandidateItem = {
         title: "Apex Dental",
         url: "https://apexdental.com/locations/seattle",
-        rankGroup: 5, // score: brand (4) + domain (3) + term (2) + loc_url (4) = 13 (hard, accepted)
+        rank_group: 5,
       };
 
-      const result = findTarget([lowScoreLowRank, highScoreHighRank], identity);
-      expect(result.target?.title).toBe("Apex Dental");
-      expect(result.target?.rankGroup).toBe(5);
+      const result = findTarget([betterRanked, higherScored], identity);
+      expect(result.target?.rank_group).toBe(5);
     });
 
-    it("favors lower rank number when accepted scores are tied", () => {
+    it("breaks a score tie on rank, whatever the array order", () => {
       const rankTwo: CandidateItem = {
         title: "Clinic A",
         url: "https://apexdental.com/locations/seattle",
-        rankGroup: 2, // score 9 (domain + term + loc_url)
+        rank_group: 2,
       };
       const rankFive: CandidateItem = {
+        ...rankTwo,
         title: "Clinic B",
-        url: "https://apexdental.com/locations/seattle",
-        rankGroup: 5, // score 9
+        rank_group: 5,
       };
 
-      const resultOrder1 = findTarget([rankTwo, rankFive], identity);
-      expect(resultOrder1.target?.title).toBe("Clinic A");
-
-      const resultOrder2 = findTarget([rankFive, rankTwo], identity);
-      expect(resultOrder2.target?.title).toBe("Clinic A");
+      expect(findTarget([rankTwo, rankFive], identity).target?.title).toBe(
+        "Clinic A",
+      );
+      expect(findTarget([rankFive, rankTwo], identity).target?.title).toBe(
+        "Clinic A",
+      );
     });
 
-    it("returns null target when no candidates meet hard and score >= 7 threshold", () => {
-      const candidates: CandidateItem[] = [
-        {
-          title: "Competitor Practice",
-          phone: "206-555-9999",
-          rankGroup: 1,
-        },
-        {
-          title: "Apex Dental General Info",
-          url: "https://apexdental.com",
-          rankGroup: 2, // score 7 (brand 4 + domain 3), but soft (no location anchor)
-        },
-      ];
+    it("reports a brand fallback but no target when nothing is anchored to the location", () => {
+      const result = findTarget(
+        [
+          {
+            title: "Competitor Practice",
+            phone: "206-555-9999",
+            rank_group: 1,
+          },
+          // brand (4) + domain (3) = 7 but no address anchor, so soft.
+          {
+            title: "Apex Dental General Info",
+            url: "https://apexdental.com",
+            rank_group: 2,
+          },
+        ],
+        identity,
+      );
 
-      const result = findTarget(candidates, identity);
       expect(result.target).toBeNull();
       expect(result.brandFallback?.title).toBe("Apex Dental General Info");
       expect(result.reasons).toEqual([]);
     });
   });
 
-  describe("custom identity and brand normalization", () => {
+  describe("identity normalization", () => {
     const identity: MatchIdentity = {
       brandName: "Downtown Sleep Therapy",
       domain: "sleeptherapy.org",
@@ -143,55 +121,58 @@ describe("maps-grid matcher", () => {
       matchTerms: ["denver", "downtown"],
     };
 
-    it("matches brand title with and without leading 'The'", () => {
-      const candidate: CandidateItem = {
-        title: "The Downtown Sleep Therapy Clinic",
-        phone: "720-555-4321",
-      };
-      const result = scoreCandidate(candidate, identity);
-      expect(result.reasons).toContain("brand_title");
-      expect(result.reasons).toContain("phone");
+    it("matches a brand title with or without a leading 'The'", () => {
+      const result = scoreCandidate(
+        { title: "The Downtown Sleep Therapy Clinic", phone: "720-555-4321" },
+        identity,
+      );
+      expect(result.reasons).toEqual(["brand_title", "phone", "location_term"]);
       expect(result.accepted).toBe(true);
     });
 
-    it("normalizes phone formats cleanly", () => {
-      const candidate: CandidateItem = {
-        title: "Sleep Center",
-        phone: "+1 (720) 555-4321",
-      };
-      const result = scoreCandidate(candidate, identity);
-      expect(result.reasons).toContain("phone");
-      expect(result.hard).toBe(true);
-      expect(result.score).toBe(7);
+    it("matches a phone through formatting and country code", () => {
+      const result = scoreCandidate(
+        { title: "Sleep Center", phone: "+1 (720) 555-4321" },
+        identity,
+      );
+      expect(result).toEqual({
+        score: 7,
+        reasons: ["phone"],
+        hard: true,
+        accepted: true,
+      });
+    });
+
+    it("reads the address out of the provider's address_info block", () => {
+      const result = scoreCandidate(
+        candidate({
+          type: "maps_search",
+          title: "Downtown Sleep Therapy",
+          url: "https://sleeptherapy.org/about",
+          phone: "+17205554321",
+          rank_group: 2,
+          address_info: {
+            address: "500 16th St",
+            city: "Denver",
+            region: "Colorado",
+            zip: "80202",
+          },
+          rating: { value: 4.8, votes_count: 132 },
+        }),
+        identity,
+      );
+      expect(result.reasons).toEqual([
+        "brand_title",
+        "domain",
+        "phone",
+        "postal",
+        "street_number",
+        "location_term",
+      ]);
       expect(result.accepted).toBe(true);
     });
 
-    it("supports snake_case DataForSEO fields", () => {
-      const candidate: CandidateItem = {
-        title: "Downtown Sleep Therapy",
-        url: "https://sleeptherapy.org/about",
-        phone_number: "7205554321",
-        postal_code: "80202",
-        rank_group: 2,
-        address_info: {
-          address: "500 16th St",
-          city: "Denver",
-          zip: "80202",
-        },
-      };
-
-      const result = scoreCandidate(candidate, identity);
-      expect(result.reasons).toContain("brand_title");
-      expect(result.reasons).toContain("domain");
-      expect(result.reasons).toContain("phone");
-      expect(result.reasons).toContain("postal");
-      expect(result.reasons).toContain("street_number");
-      expect(result.reasons).toContain("location_term");
-      expect(result.hard).toBe(true);
-      expect(result.accepted).toBe(true);
-    });
-
-    it("tracks brand match correctly in isBrandMatch", () => {
+    it("treats a domain hit as a brand match even under another name", () => {
       expect(isBrandMatch({ title: "Downtown Sleep Therapy" }, identity)).toBe(
         true,
       );

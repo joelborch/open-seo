@@ -34,7 +34,7 @@ const FEATURE_TOOLTIPS: Record<string, string> = {
   top_stories: "Top Stories — news articles carousel",
 };
 
-export function SerpFeatureTags({ features }: { features: string[] }) {
+function SerpFeatureTags({ features }: { features: string[] }) {
   const notable = features.filter((f) => f in FEATURE_SHORT_LABELS);
   if (notable.length === 0) return null;
   return (

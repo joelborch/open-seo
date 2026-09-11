@@ -16,7 +16,7 @@ const TASK_GET_CONCURRENCY = 25;
  */
 const MAX_TASK_GETS = 400;
 
-export interface RankCheckRetrievalResult {
+interface RankCheckRetrievalResult {
   runId: string;
   /** Snapshots written from stored provider task ids. */
   collected: number;

@@ -49,6 +49,7 @@ import { Route as ProjectPProjectIdSavedRouteImport } from './routes/_project/p/
 import { Route as ProjectPProjectIdSamRouteImport } from './routes/_project/p/$projectId/sam'
 import { Route as ProjectPProjectIdRankTrackingRouteImport } from './routes/_project/p/$projectId/rank-tracking'
 import { Route as ProjectPProjectIdPromptExplorerRouteImport } from './routes/_project/p/$projectId/prompt-explorer'
+import { Route as ProjectPProjectIdMapsGridRouteImport } from './routes/_project/p/$projectId/maps-grid'
 import { Route as ProjectPProjectIdKeywordsRouteImport } from './routes/_project/p/$projectId/keywords'
 import { Route as ProjectPProjectIdDomainRouteImport } from './routes/_project/p/$projectId/domain'
 import { Route as ProjectPProjectIdBrandLookupRouteImport } from './routes/_project/p/$projectId/brand-lookup'
@@ -266,6 +267,12 @@ const ProjectPProjectIdPromptExplorerRoute =
     path: '/prompt-explorer',
     getParentRoute: () => ProjectPProjectIdRouteRoute,
   } as any)
+const ProjectPProjectIdMapsGridRoute =
+  ProjectPProjectIdMapsGridRouteImport.update({
+    id: '/maps-grid',
+    path: '/maps-grid',
+    getParentRoute: () => ProjectPProjectIdRouteRoute,
+  } as any)
 const ProjectPProjectIdKeywordsRoute =
   ProjectPProjectIdKeywordsRouteImport.update({
     id: '/keywords',
@@ -370,6 +377,7 @@ export interface FileRoutesByFullPath {
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
   '/p/$projectId/keywords': typeof ProjectPProjectIdKeywordsRoute
+  '/p/$projectId/maps-grid': typeof ProjectPProjectIdMapsGridRoute
   '/p/$projectId/prompt-explorer': typeof ProjectPProjectIdPromptExplorerRoute
   '/p/$projectId/rank-tracking': typeof ProjectPProjectIdRankTrackingRouteWithChildren
   '/p/$projectId/sam': typeof ProjectPProjectIdSamRoute
@@ -417,6 +425,7 @@ export interface FileRoutesByTo {
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
   '/p/$projectId/keywords': typeof ProjectPProjectIdKeywordsRoute
+  '/p/$projectId/maps-grid': typeof ProjectPProjectIdMapsGridRoute
   '/p/$projectId/prompt-explorer': typeof ProjectPProjectIdPromptExplorerRoute
   '/p/$projectId/sam': typeof ProjectPProjectIdSamRoute
   '/p/$projectId/saved': typeof ProjectPProjectIdSavedRoute
@@ -470,6 +479,7 @@ export interface FileRoutesById {
   '/_project/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/_project/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
   '/_project/p/$projectId/keywords': typeof ProjectPProjectIdKeywordsRoute
+  '/_project/p/$projectId/maps-grid': typeof ProjectPProjectIdMapsGridRoute
   '/_project/p/$projectId/prompt-explorer': typeof ProjectPProjectIdPromptExplorerRoute
   '/_project/p/$projectId/rank-tracking': typeof ProjectPProjectIdRankTrackingRouteWithChildren
   '/_project/p/$projectId/sam': typeof ProjectPProjectIdSamRoute
@@ -522,6 +532,7 @@ export interface FileRouteTypes {
     | '/p/$projectId/brand-lookup'
     | '/p/$projectId/domain'
     | '/p/$projectId/keywords'
+    | '/p/$projectId/maps-grid'
     | '/p/$projectId/prompt-explorer'
     | '/p/$projectId/rank-tracking'
     | '/p/$projectId/sam'
@@ -569,6 +580,7 @@ export interface FileRouteTypes {
     | '/p/$projectId/brand-lookup'
     | '/p/$projectId/domain'
     | '/p/$projectId/keywords'
+    | '/p/$projectId/maps-grid'
     | '/p/$projectId/prompt-explorer'
     | '/p/$projectId/sam'
     | '/p/$projectId/saved'
@@ -621,6 +633,7 @@ export interface FileRouteTypes {
     | '/_project/p/$projectId/brand-lookup'
     | '/_project/p/$projectId/domain'
     | '/_project/p/$projectId/keywords'
+    | '/_project/p/$projectId/maps-grid'
     | '/_project/p/$projectId/prompt-explorer'
     | '/_project/p/$projectId/rank-tracking'
     | '/_project/p/$projectId/sam'
@@ -939,6 +952,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectPProjectIdPromptExplorerRouteImport
       parentRoute: typeof ProjectPProjectIdRouteRoute
     }
+    '/_project/p/$projectId/maps-grid': {
+      id: '/_project/p/$projectId/maps-grid'
+      path: '/maps-grid'
+      fullPath: '/p/$projectId/maps-grid'
+      preLoaderRoute: typeof ProjectPProjectIdMapsGridRouteImport
+      parentRoute: typeof ProjectPProjectIdRouteRoute
+    }
     '/_project/p/$projectId/keywords': {
       id: '/_project/p/$projectId/keywords'
       path: '/keywords'
@@ -1129,6 +1149,7 @@ interface ProjectPProjectIdRouteRouteChildren {
   ProjectPProjectIdBrandLookupRoute: typeof ProjectPProjectIdBrandLookupRoute
   ProjectPProjectIdDomainRoute: typeof ProjectPProjectIdDomainRoute
   ProjectPProjectIdKeywordsRoute: typeof ProjectPProjectIdKeywordsRoute
+  ProjectPProjectIdMapsGridRoute: typeof ProjectPProjectIdMapsGridRoute
   ProjectPProjectIdPromptExplorerRoute: typeof ProjectPProjectIdPromptExplorerRoute
   ProjectPProjectIdRankTrackingRoute: typeof ProjectPProjectIdRankTrackingRouteWithChildren
   ProjectPProjectIdSamRoute: typeof ProjectPProjectIdSamRoute
@@ -1145,6 +1166,7 @@ const ProjectPProjectIdRouteRouteChildren: ProjectPProjectIdRouteRouteChildren =
     ProjectPProjectIdBrandLookupRoute: ProjectPProjectIdBrandLookupRoute,
     ProjectPProjectIdDomainRoute: ProjectPProjectIdDomainRoute,
     ProjectPProjectIdKeywordsRoute: ProjectPProjectIdKeywordsRoute,
+    ProjectPProjectIdMapsGridRoute: ProjectPProjectIdMapsGridRoute,
     ProjectPProjectIdPromptExplorerRoute: ProjectPProjectIdPromptExplorerRoute,
     ProjectPProjectIdRankTrackingRoute:
       ProjectPProjectIdRankTrackingRouteWithChildren,

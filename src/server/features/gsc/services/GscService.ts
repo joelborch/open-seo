@@ -16,8 +16,11 @@ import {
 export { GscNotConnectedError } from "@/server/lib/gscErrors";
 import {
   buildSearchAnalyticsRequest,
+  GSC_DEFAULT_ROW_LIMIT,
   type GscPerformanceInput,
 } from "@/server/features/gsc/searchAnalytics";
+import { exportDimensionFor } from "@/server/features/gsc/gscExportSql";
+import { gscExportRepository } from "@/server/features/gsc/repositories/gscExportRepository";
 import {
   GscConnectionRepository,
   type GscConnection,
@@ -222,6 +225,19 @@ async function disconnect(input: {
   }
 }
 
+/**
+ * Requests the BigQuery export can stand in for: web search only, unfiltered and
+ * unpaginated. A dimension filter or a `startRow` offset would have to be
+ * reimplemented in SQL to match the API exactly, so those stay on the API.
+ */
+function exportServableRequest(request: GscSearchAnalyticsRequest): boolean {
+  return (
+    (request.type ?? "web") === "web" &&
+    !request.startRow &&
+    !request.dimensionFilterGroups
+  );
+}
+
 /** Pass-through of GSC `searchAnalytics.query` for a project's connected property. */
 async function getPerformance(
   input: GscPerformanceInput,
@@ -233,6 +249,34 @@ async function getPerformance(
     throw new GscNotConnectedError(input.projectId);
   }
   const request = buildSearchAnalyticsRequest(input);
+
+  // ---- Opt-in BigQuery export source -------------------------------------
+  // When the project has a Search Console export dataset that fully covers this
+  // window, one BigQuery read replaces the paginated API crawl and returns the
+  // identical aggregates. The reader answers null for "no dataset", "window not
+  // covered" or a BigQuery failure, and the API path below takes over.
+  const exportDimension = exportServableRequest(request)
+    ? exportDimensionFor(request.dimensions)
+    : null;
+  if (exportDimension) {
+    const rows = await gscExportRepository.getSearchPerformanceFromExport({
+      projectId: input.projectId,
+      startDate: request.startDate,
+      endDate: request.endDate,
+      dimension: exportDimension,
+      limit: request.rowLimit ?? GSC_DEFAULT_ROW_LIMIT,
+    });
+    if (rows) {
+      return {
+        siteUrl: connection.siteUrl,
+        connectedBy: connection.connectedAccountEmail,
+        request,
+        rows,
+      };
+    }
+  }
+  // ---- end BigQuery export source ----------------------------------------
+
   const client = createGscClient({
     userId: connection.connectedByUserId,
     gscAccountId: connection.gscAccountId ?? undefined,

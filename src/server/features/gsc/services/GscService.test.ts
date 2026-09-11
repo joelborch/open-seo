@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
       getUserInfoEmail: () => getUserInfoEmail(opts),
       querySearchAnalytics: () => querySearchAnalytics(opts),
     })),
+    getSearchPerformanceFromExport: vi.fn(),
     upsert: vi.fn(),
     getByProjectId: vi.fn(),
     deleteByProjectId: vi.fn(),
@@ -55,6 +56,11 @@ vi.mock("@/db", () => ({
 }));
 vi.mock("@/server/lib/gscClient", () => ({
   createGscClient: mocks.createGscClient,
+}));
+vi.mock("@/server/features/gsc/repositories/gscExportRepository", () => ({
+  gscExportRepository: {
+    getSearchPerformanceFromExport: mocks.getSearchPerformanceFromExport,
+  },
 }));
 vi.mock("@/server/features/gsc/repositories/GscConnectionRepository", () => ({
   GscConnectionRepository: {
@@ -310,10 +316,65 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
 });
 
 describe("GscService.getPerformance", () => {
+  const connection = {
+    connectedByUserId: "u1",
+    connectedAccountEmail: "a@example.com",
+    gscAccountId: "sub-a",
+    siteUrl: "https://x/",
+  };
+
   beforeEach(() => {
     mocks.getByProjectId.mockReset();
     mocks.querySearchAnalytics.mockReset().mockResolvedValue([]);
     mocks.createGscClient.mockClear();
+    // Null = "the export cannot serve this window", the reader's fall-back signal.
+    mocks.getSearchPerformanceFromExport.mockReset().mockResolvedValue(null);
+  });
+
+  it("answers from the BigQuery export without calling the API when it is covered", async () => {
+    mocks.getByProjectId.mockResolvedValue(connection);
+    const exportRows = [
+      {
+        keys: ["dentist"],
+        clicks: 4,
+        impressions: 90,
+        ctr: 0.04,
+        position: 7.5,
+      },
+    ];
+    mocks.getSearchPerformanceFromExport.mockResolvedValue(exportRows);
+
+    const result = await GscService.getPerformance({
+      projectId: "p1",
+      startDate: "2026-01-01",
+      endDate: "2026-01-31",
+    });
+
+    expect(result.rows).toEqual(exportRows);
+    expect(mocks.getSearchPerformanceFromExport).toHaveBeenCalledWith({
+      projectId: "p1",
+      startDate: "2026-01-01",
+      endDate: "2026-01-31",
+      dimension: "query",
+      limit: 1000,
+    });
+    expect(mocks.createGscClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps filtered and paginated requests on the API", async () => {
+    mocks.getByProjectId.mockResolvedValue(connection);
+
+    await GscService.getPerformance({
+      projectId: "p1",
+      startDate: "2026-01-01",
+      endDate: "2026-01-31",
+      filters: [
+        { dimension: "page", operator: "contains", expression: "/blog/" },
+      ],
+    });
+
+    expect(mocks.getSearchPerformanceFromExport).not.toHaveBeenCalled();
+    expect(mocks.querySearchAnalytics).toHaveBeenCalled();
   });
 
   it("uses the grant stored on the project connection", async () => {

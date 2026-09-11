@@ -1,354 +1,307 @@
+import { z } from "zod";
+
 /**
- * Maps grid candidate matcher: scores Google Maps ranking candidates against
- * a business location identity and identifies the target business listing.
+ * Deciding which row of a Google Maps pack is the client's own listing.
  *
- * Ported from `tools/studio-tools/apps/analytics/scripts/local_intent/google_maps_radius_grid.py`.
+ * A grid cell's whole value depends on this being right: score the wrong row and
+ * the heatmap reports a competitor's position as the client's. Name alone is not
+ * enough — multi-location brands return several near-identical titles — so a row
+ * is only accepted once a hard identity signal (phone, or the domain plus this
+ * location's slug) or a brand signal anchored to this address (postal code,
+ * street number, a configured match term) lines up.
+ *
+ * The scoring is a port of
+ * `tools/studio-tools/apps/analytics/scripts/local_intent/google_maps_radius_grid.py`;
+ * `fixtures/matcher-cases.json` holds that script's decisions and the tests
+ * assert equality against them.
  */
 
+const addressInfoSchema = z
+  .object({
+    address: z.string().nullable().optional(),
+    borough: z.string().nullable().optional(),
+    city: z.string().nullable().optional(),
+    region: z.string().nullable().optional(),
+    zip: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+/**
+ * One row of a `/v3/serp/google/maps/task_get/advanced` result. The shape is the
+ * provider's, so matching, the persisted cell results and the Zod validation at
+ * the API boundary all read the same fields instead of three near-copies.
+ * Unknown keys pass through: DataForSEO adds columns without warning, and we
+ * only act on the ones named here.
+ */
+export const mapsCandidateItemSchema = z
+  .object({
+    type: z.string().nullable().optional(),
+    rank_group: z.number().nullable().optional(),
+    rank_absolute: z.number().nullable().optional(),
+    title: z.string().nullable().optional(),
+    domain: z.string().nullable().optional(),
+    url: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    address: z.string().nullable().optional(),
+    address_info: addressInfoSchema.nullable().optional(),
+    place_id: z.string().nullable().optional(),
+    cid: z.string().nullable().optional(),
+    // Maps returns the rating as a block, not a bare number — the review count
+    // lives in `votes_count` rather than a top-level `reviews_count`.
+    rating: z
+      .object({
+        value: z.number().nullable().optional(),
+        votes_count: z.number().nullable().optional(),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+    category: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export type CandidateItem = z.infer<typeof mapsCandidateItemSchema>;
+
+/** Who we are looking for: the location's own identity plus its extra aliases. */
 export interface MatchIdentity {
   brandName: string;
   domain: string;
   slug: string;
-  phone?: string;
-  street?: string;
-  address?: string;
-  postalCode?: string;
+  phone?: string | null;
+  street?: string | null;
+  postalCode?: string | null;
   matchTerms: string[];
 }
 
-export interface CandidateItem {
-  title: string;
-  url?: string;
-  domain?: string;
-  phone?: string;
-  phone_number?: string;
-  phoneNumber?: string;
-  address?: string;
-  zip?: string;
-  postal_code?: string;
-  postalCode?: string;
-  rankGroup?: number;
-  rank_group?: number;
-  rankAbsolute?: number;
-  rank_absolute?: number;
-  placeId?: string;
-  place_id?: string;
-  cid?: string;
-  rating?: number;
-  reviewsCount?: number;
-  reviews_count?: number;
-  address_info?: Record<string, unknown>;
-  addressInfo?: Record<string, unknown>;
-  [key: string]: unknown;
-}
+/**
+ * Why a row scored what it did. Order of the array is evaluation order, which
+ * the parity fixtures assert — a reordering here is a behavior change.
+ */
+type MatchReason =
+  | "brand_title"
+  | "domain"
+  | "phone"
+  | "postal"
+  | "street_number"
+  | "location_term"
+  | "location_url";
 
-export interface MatchScoreResult {
+interface CandidateMatch {
   score: number;
-  reasons: string[];
+  reasons: MatchReason[];
+  /** An identity signal tied to this specific location, not just the brand. */
   hard: boolean;
+  /** Good enough to call this row the client's listing. */
   accepted: boolean;
-  [Symbol.iterator](): Iterator<unknown>;
 }
 
-export interface FindTargetResult {
+interface TargetMatch {
+  /** The accepted row, or null when nothing cleared the bar. */
   target: CandidateItem | null;
+  /**
+   * Best-ranked row that merely looks like the brand. Reported so the UI can
+   * say "we found something that might be you" instead of a bare "not found".
+   */
   brandFallback: CandidateItem | null;
-  reasons: string[];
+  reasons: MatchReason[];
   score: number;
-  [Symbol.iterator](): Iterator<unknown>;
 }
 
-function normalize(text: unknown): string {
-  return String(text ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+/** Rank we treat a listing as holding: the pack position it was returned at. */
+const NO_RANK = Number.MAX_SAFE_INTEGER;
+
+/** Minimum score for an accepted target, on top of a hard identity signal. */
+const ACCEPT_SCORE = 7;
+
+function normalize(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function digits(text: unknown): string {
-  return String(text ?? "").replace(/\D+/g, "");
+function digitsOnly(value: string | null | undefined): string {
+  return (value ?? "").replace(/\D+/g, "");
 }
 
-function getStreetNumber(street?: string): string {
-  const match = (street ?? "").match(/\d+/);
-  return match ? match[0] : "";
-}
-
-function getItemPhone(candidate: CandidateItem): string {
-  if (candidate.phone) return String(candidate.phone);
-  if (candidate.phone_number) return String(candidate.phone_number);
-  if (candidate.phoneNumber) return String(candidate.phoneNumber);
-  const contact =
-    candidate.contact_url ?? candidate.contactUrl ?? candidate.url;
-  return contact ? String(contact) : "";
-}
-
-function getItemAddress(candidate: CandidateItem): string {
-  const bits: string[] = [];
-  const info = (candidate.address_info ?? candidate.addressInfo) as
-    | Record<string, unknown>
-    | undefined;
-
-  if (info && typeof info === "object") {
-    for (const key of ["address", "city", "zip", "region"]) {
-      if (info[key]) {
-        bits.push(String(info[key]));
-      }
-    }
-  }
-
-  if (candidate.address) {
-    bits.push(String(candidate.address));
-  }
-  const zip = candidate.zip ?? candidate.postal_code ?? candidate.postalCode;
-  if (zip && !bits.includes(String(zip))) {
-    bits.push(String(zip));
-  }
-
-  return bits.join(" ");
-}
-
-function getItemUrlText(candidate: CandidateItem): string {
-  const parts = [
-    candidate.url,
-    candidate.domain,
-    candidate.website,
-    candidate.contact_url,
-    candidate.contactUrl,
-    candidate.check_url,
-    candidate.checkUrl,
-  ];
-  return parts.filter(Boolean).map(String).join(" ");
-}
-
-function getRank(item: CandidateItem): number | null {
-  for (const val of [
-    item.rankGroup,
-    item.rank_group,
-    item.rankAbsolute,
-    item.rank_absolute,
-  ]) {
-    if (val !== undefined && val !== null) {
-      const num = Number(val);
-      if (Number.isInteger(num) && num > 0) {
-        return num;
-      }
-      if (!Number.isNaN(num) && num > 0) {
-        return Math.floor(num);
-      }
+/** Ranked pack position, or null when the row carries neither rank field. */
+export function candidateRank(item: CandidateItem): number | null {
+  for (const value of [item.rank_group, item.rank_absolute]) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
     }
   }
   return null;
 }
 
-function matchesBrandTitle(title: string, brandName: string): boolean {
-  const brandNorm = normalize(brandName);
-  if (!brandNorm) {
-    return false;
-  }
-  const brandWithoutThe = brandNorm.replace(/^the\s+/, "");
-  return (
-    title.includes(brandNorm) ||
-    title.includes(`the ${brandNorm}`) ||
-    (brandWithoutThe.length > 0 && title.includes(brandWithoutThe))
-  );
+/** Everything in a row that could carry the client's address. */
+function addressText(item: CandidateItem): string {
+  const info = item.address_info;
+  const parts = [info?.address, info?.city, info?.zip, info?.region];
+  if (item.address) parts.push(item.address);
+  return normalize(parts.filter(Boolean).join(" "));
+}
+
+/** Everything in a row that could carry the client's domain or slug. */
+function urlText(item: CandidateItem): string {
+  return normalize([item.url, item.domain].filter(Boolean).join(" "));
 }
 
 /**
- * Checks whether an item belongs to the target brand (by title or domain).
+ * Brand names drift by a leading article between Google and a CRM, so "The
+ * Airway Dentists" and "Airway Dentists" have to read as the same brand.
  */
+function matchesBrandTitle(title: string, brandName: string): boolean {
+  const brand = normalize(brandName);
+  if (!brand) return false;
+  return (
+    title.includes(brand) ||
+    title.includes(brand.replace(/^the\s+/, "")) ||
+    title.includes(`the ${brand}`)
+  );
+}
+
+/** Does this row belong to the brand at all (by title or by domain)? */
 export function isBrandMatch(
   item: CandidateItem,
   identity: MatchIdentity,
 ): boolean {
-  const title = normalize(item.title);
-  const urlText = normalize(getItemUrlText(item));
-  const domainNorm = normalize(identity.domain);
-
+  const domain = normalize(identity.domain);
   return (
-    matchesBrandTitle(title, identity.brandName) ||
-    (Boolean(domainNorm) && urlText.includes(domainNorm))
+    matchesBrandTitle(normalize(item.title), identity.brandName) ||
+    (domain !== "" && urlText(item).includes(domain))
   );
 }
 
 /**
- * Scores a candidate listing against a target business identity:
- * - Phone digits match: +7 (hard match)
- * - Domain + `/locations/<slug>`: +4 (hard match)
- * - Brand title match: +4 (identity signal)
- * - Domain in URL text: +3 (identity signal)
- * - Postal code in address: +2
- * - Street number in address: +2
- * - Match term in title, address, or URL: +2
- * - Soft to hard promotion: if identity matched (brand_title or domain) and has
- *   a location anchor (postal, street_number, or match_term), hard is promoted to true.
- * - Accept target if hard is true and score >= 7.
+ * Score one row against the location's identity.
+ *
+ * Brand title +4 and domain-in-URL +3 say "this is the right company"; phone +7
+ * and domain-plus-`/locations/<slug>` +4 say "this is the right office" and are
+ * hard on their own. Postal code, street number and match terms add +2 each and
+ * can promote a soft brand signal to hard — which is the whole point: a brand
+ * name that also carries this location's ZIP is this location, while a brand
+ * name on its own could be any of thirty offices.
  */
 export function scoreCandidate(
-  candidate: CandidateItem,
+  item: CandidateItem,
   identity: MatchIdentity,
-): MatchScoreResult {
-  const title = normalize(candidate.title);
-  const address = normalize(getItemAddress(candidate));
-  const urlText = normalize(getItemUrlText(candidate));
-  const phoneDigits = digits(getItemPhone(candidate));
+): CandidateMatch {
+  const title = normalize(item.title);
+  const address = addressText(item);
+  const urls = urlText(item);
+  const itemPhoneDigits = digitsOnly(item.phone);
 
-  const locPhone = digits(identity.phone).slice(-10);
-  const postal = identity.postalCode
-    ? String(identity.postalCode).trim().toLowerCase()
-    : "";
-  const streetNo = getStreetNumber(identity.street ?? identity.address);
-  const matchTerms = (identity.matchTerms ?? []).map(normalize).filter(Boolean);
-  const domainNorm = normalize(identity.domain);
+  const domain = normalize(identity.domain);
+  const slug = normalize(identity.slug);
+  // Last 10 digits: the provider returns E.164 while configs hold local format.
+  const identityPhone = digitsOnly(identity.phone).slice(-10);
+  const postalCode = normalize(identity.postalCode);
+  const streetNumber = /\d+/.exec(identity.street ?? "")?.[0] ?? "";
+  const matchTerms = identity.matchTerms.map(normalize).filter(Boolean);
 
+  const reasons: MatchReason[] = [];
   let score = 0;
-  const reasons: string[] = [];
-  let hard = false;
   let hasIdentity = false;
+  let hard = false;
 
-  // 1. Brand title (+4)
   if (matchesBrandTitle(title, identity.brandName)) {
     score += 4;
     reasons.push("brand_title");
     hasIdentity = true;
   }
-
-  // 2. Domain in URL (+3)
-  if (domainNorm && urlText.includes(domainNorm)) {
+  if (domain !== "" && urls.includes(domain)) {
     score += 3;
     reasons.push("domain");
     hasIdentity = true;
   }
-
-  // 3. Phone digits match (+7 hard)
-  if (locPhone && phoneDigits.includes(locPhone)) {
+  if (identityPhone !== "" && itemPhoneDigits.includes(identityPhone)) {
     score += 7;
     reasons.push("phone");
-    hard = true;
     hasIdentity = true;
+    hard = true;
   }
-
-  // 4. Postal match (+2)
-  if (postal && address.includes(postal)) {
+  if (postalCode !== "" && address.includes(postalCode)) {
     score += 2;
     reasons.push("postal");
   }
-
-  // 5. Street number match (+2)
-  if (streetNo && address.includes(streetNo)) {
+  if (streetNumber !== "" && address.includes(streetNumber)) {
     score += 2;
     reasons.push("street_number");
   }
-
-  // 6. Match term in title, address, or url (+2)
   if (
     matchTerms.some(
       (term) =>
-        term &&
-        (title.includes(term) ||
-          address.includes(term) ||
-          urlText.includes(term)),
+        title.includes(term) || address.includes(term) || urls.includes(term),
     )
   ) {
     score += 2;
     reasons.push("location_term");
   }
-
-  // 7. Location URL with slug (+4 hard)
-  const slug = identity.slug ? normalize(identity.slug) : "";
   if (
-    domainNorm &&
-    urlText.includes(domainNorm) &&
-    slug &&
-    urlText.includes(`/locations/${slug}`)
+    domain !== "" &&
+    slug !== "" &&
+    urls.includes(domain) &&
+    urls.includes(`/locations/${slug}`)
   ) {
     score += 4;
     reasons.push("location_url");
-    hard = true;
     hasIdentity = true;
-  }
-
-  // Soft to hard promotion:
-  // If identity matched (brand_title or domain) and has location disambiguation
-  // (postal or street_number or location_term), promote hard to true.
-  if (
-    hasIdentity &&
-    !hard &&
-    (reasons.includes("brand_title") || reasons.includes("domain")) &&
-    (reasons.includes("postal") ||
-      reasons.includes("street_number") ||
-      reasons.includes("location_term"))
-  ) {
     hard = true;
   }
 
-  const isHard = Boolean(hasIdentity && hard);
-  const accepted = Boolean(isHard && score >= 7);
+  // A brand signal plus any address-level anchor identifies the office, not just
+  // the company, so it counts as hard.
+  const anchored =
+    reasons.includes("postal") ||
+    reasons.includes("street_number") ||
+    reasons.includes("location_term");
+  if (hasIdentity && !hard && anchored) hard = true;
 
+  const isHard = hasIdentity && hard;
   return {
     score,
     reasons,
     hard: isHard,
-    accepted,
-    *[Symbol.iterator]() {
-      yield this.score;
-      yield this.reasons;
-      yield this.hard;
-      yield this.accepted;
-    },
+    accepted: isHard && score >= ACCEPT_SCORE,
   };
 }
 
 /**
- * Evaluates candidate items from Google Maps SERP against a business identity.
- * Finds the accepted target listing (highest score, lowest rank wins ties),
- * along with the highest-ranked brand fallback listing.
+ * Pick the client's listing out of one cell's pack. Highest accepted score wins;
+ * the better-ranked row breaks a tie, so a tied pair resolves to the listing
+ * Google actually put first rather than to array order.
  */
 export function findTarget(
   items: CandidateItem[],
   identity: MatchIdentity,
-): FindTargetResult {
-  let best: { score: number; item: CandidateItem; reasons: string[] } | null =
-    null;
-  let bestBrand: CandidateItem | null = null;
+): TargetMatch {
+  let best: { item: CandidateItem; match: CandidateMatch } | null = null;
+  let brandFallback: CandidateItem | null = null;
 
   for (const item of items) {
     if (isBrandMatch(item, identity)) {
-      const currentRank = getRank(item) ?? 999;
-      const bestBrandRank = bestBrand ? (getRank(bestBrand) ?? 999) : 999;
-      if (!bestBrand || currentRank < bestBrandRank) {
-        bestBrand = item;
-      }
+      const rank = candidateRank(item) ?? NO_RANK;
+      const bestBrandRank = brandFallback
+        ? (candidateRank(brandFallback) ?? NO_RANK)
+        : NO_RANK;
+      if (!brandFallback || rank < bestBrandRank) brandFallback = item;
     }
 
     const match = scoreCandidate(item, identity);
-    if (match.hard && match.score >= 7) {
-      const itemRank = getRank(item) ?? 999;
-      const bestRank = best ? (getRank(best.item) ?? 999) : 999;
-      if (
-        best === null ||
-        match.score > best.score ||
-        (match.score === best.score && itemRank < bestRank)
-      ) {
-        best = { score: match.score, item, reasons: match.reasons };
-      }
+    if (!match.accepted) continue;
+    if (
+      !best ||
+      match.score > best.match.score ||
+      (match.score === best.match.score &&
+        (candidateRank(item) ?? NO_RANK) <
+          (candidateRank(best.item) ?? NO_RANK))
+    ) {
+      best = { item, match };
     }
   }
 
-  const target = best ? best.item : null;
-  const reasons = best ? best.reasons : [];
-  const score = best ? best.score : 0;
-
   return {
-    target,
-    brandFallback: bestBrand,
-    reasons,
-    score,
-    *[Symbol.iterator]() {
-      yield this.target;
-      yield this.brandFallback;
-      yield this.reasons;
-      yield this.score;
-    },
+    target: best?.item ?? null,
+    brandFallback,
+    reasons: best?.match.reasons ?? [],
+    score: best?.match.score ?? 0,
   };
 }

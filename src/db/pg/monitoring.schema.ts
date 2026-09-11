@@ -456,3 +456,50 @@ export const projectBigqueryTargets = pgTable(
     uniqueIndex("project_bigquery_targets_client_key_idx").on(table.clientKey),
   ],
 );
+
+// ============================================================================
+// BigQuery projection ledger
+// ============================================================================
+
+// Which run table a projection came from. `run_id` carries no FK because the
+// three kinds live in three different tables; the run's own cascade from
+// `projects` plus this row's cascade keep the ledger from outliving its project.
+const PROJECTION_RUN_KINDS = [
+  "audit_schedule_run",
+  "rank_check_run",
+  "maps_grid_run",
+] as const;
+
+// One row per (run, BigQuery table) projection attempt. `error` null means the
+// MERGE succeeded, so the cron's "what still needs projecting" query is a join
+// against the success rows rather than a status column, and a failed attempt is
+// retried on the next tick by being overwritten in place.
+export const bigqueryProjections = pgTable(
+  "bigquery_projections",
+  {
+    id: serial("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    runKind: text("run_kind", { enum: PROJECTION_RUN_KINDS }).notNull(),
+    runId: text("run_id").notNull(),
+    // "table" and "rows" are reserved words in Postgres; Drizzle quotes every
+    // identifier it emits, so the column names still match seo-yolo's ledger.
+    tableName: text("table").notNull(),
+    dataset: text("dataset").notNull(),
+    rows: integer("rows").notNull(),
+    projectedAt: timestampColumn("projected_at").notNull().default(isoNow),
+    error: text("error"),
+  },
+  (table) => [
+    uniqueIndex("bigquery_projections_run_table_idx").on(
+      table.runKind,
+      table.runId,
+      table.tableName,
+    ),
+    index("bigquery_projections_project_idx").on(
+      table.projectId,
+      table.projectedAt,
+    ),
+  ],
+);

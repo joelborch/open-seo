@@ -16,7 +16,7 @@
         "title": "Random Dental Clinic",
         "phone": "312-555-0100",
         "address": "999 Some Ave",
-        "rankGroup": 3
+        "rank_group": 3
       },
       "expected": {
         "score": 7,
@@ -31,7 +31,7 @@
       "candidate": {
         "title": "Family Dental Center",
         "url": "https://airwaydentists.com/locations/chicago-loop",
-        "rankGroup": 2
+        "rank_group": 2
       },
       "expected": {
         "score": 9,
@@ -46,7 +46,7 @@
       "candidate": {
         "title": "The Airway Dentists - Chicago Loop",
         "address": "100 State St, Chicago, IL 60601",
-        "rankGroup": 1
+        "rank_group": 1
       },
       "expected": {
         "score": 8,
@@ -62,7 +62,7 @@
         "title": "Dentistry Office",
         "url": "https://airwaydentists.com",
         "address": "123 N Michigan Ave, 60601",
-        "rankGroup": 4
+        "rank_group": 4
       },
       "expected": {
         "score": 7,
@@ -78,7 +78,7 @@
         "title": "Airway Dentists Official Website",
         "url": "https://airwaydentists.com/about",
         "address": "Unanchored Facility Road",
-        "rankGroup": 5
+        "rank_group": 5
       },
       "expected": {
         "score": 7,
@@ -95,7 +95,7 @@
         "phone": "312-999-8888",
         "address": "500 W Madison St",
         "url": "https://brightsmiledental.com",
-        "rankGroup": 1
+        "rank_group": 1
       },
       "expected": {
         "score": 0,
@@ -111,36 +111,36 @@
         "title": "Random Dental Clinic",
         "phone": "312-555-0100",
         "address": "999 Some Ave",
-        "rankGroup": 3
+        "rank_group": 3
       },
       {
         "title": "Family Dental Center",
         "url": "https://airwaydentists.com/locations/chicago-loop",
-        "rankGroup": 2
+        "rank_group": 2
       },
       {
         "title": "The Airway Dentists - Chicago Loop",
         "address": "100 State St, Chicago, IL 60601",
-        "rankGroup": 1
+        "rank_group": 1
       },
       {
         "title": "Dentistry Office",
         "url": "https://airwaydentists.com",
         "address": "123 N Michigan Ave, 60601",
-        "rankGroup": 4
+        "rank_group": 4
       },
       {
         "title": "Airway Dentists Official Website",
         "url": "https://airwaydentists.com/about",
         "address": "Unanchored Facility Road",
-        "rankGroup": 5
+        "rank_group": 5
       },
       {
         "title": "Bright Smile Dental Care",
         "phone": "312-999-8888",
         "address": "500 W Madison St",
         "url": "https://brightsmiledental.com",
-        "rankGroup": 1
+        "rank_group": 1
       }
     ],
     "expectedTargetTitle": "Family Dental Center",
