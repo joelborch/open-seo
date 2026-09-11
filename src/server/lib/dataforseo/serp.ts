@@ -5,7 +5,7 @@ import {
   buildTaskBilling,
   isNoResultsTask,
   isTaskInProgress,
-  parseTaskItems,
+  parseTaskItemsSkippingInvalid,
   type DataforseoApiResponse,
   type DataforseoItemsTask,
   type DataforseoTaskLike,
@@ -74,10 +74,6 @@ function collectionParams(
   };
 }
 
-// A cited source inside a SERP feature block. `ai_overview_reference` entries
-// carry domain + url (and no rank of their own), `link_element` entries the
-// same two fields — so one shape reads both.
-
 export async function fetchLiveSerp(input: {
   keyword: string;
   locationCode: number;
@@ -101,7 +97,7 @@ export async function fetchLiveSerp(input: {
   // response in the normal billing path and return an empty item list.
   const task = assertOk(response, { treatNoResultsAsEmpty: true });
   return {
-    data: parseTaskItems(
+    data: parseTaskItemsSkippingInvalid(
       "google-organic-live-advanced",
       task,
       serpSnapshotItemSchema,
@@ -145,7 +141,7 @@ export async function fetchRankCheckSerp(
   // "No Search Results" (40501) is valid for obscure/new keywords — treat as an
   // empty result set rather than failing the whole rank-tracking run.
   const task = assertOk(response, { treatNoResultsAsEmpty: true });
-  const items = parseTaskItems(
+  const items = parseTaskItemsSkippingInvalid(
     "google-organic-live-advanced",
     task,
     serpSnapshotItemSchema,
@@ -348,7 +344,7 @@ export async function fetchRankCheckTaskResult(
     };
   }
 
-  const items = parseTaskItems(
+  const items = parseTaskItemsSkippingInvalid(
     "google-organic-task-get-advanced",
     task,
     serpSnapshotItemSchema,

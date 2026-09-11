@@ -21,6 +21,10 @@ import {
   postMyBusinessUpdatesTask,
 } from "@/server/lib/dataforseo/business";
 import {
+  fetchGbpProfile,
+  postGbpReviewsTask,
+} from "@/server/lib/dataforseo/gbpSnapshot";
+import {
   fetchBacklinksHistory,
   fetchBacklinksRows,
   fetchBacklinksSummary,
@@ -98,6 +102,11 @@ export function createDataforseoClient(customer: BillingCustomerContext) {
       // through fetchBusinessDataTaskResult (see index.ts).
       reviewsTaskPost: meter(customer, postGoogleReviewsTask, "local_seo"),
       updatesTaskPost: meter(customer, postMyBusinessUpdatesTask, "local_seo"),
+      // The scheduled GBP snapshot (src/server/features/gbp): one live profile
+      // read plus one queued reviews task per location. Collection of that task
+      // runs unmetered through fetchBusinessDataTaskResult, same as above.
+      gbpProfile: meter(customer, fetchGbpProfile, "local_seo"),
+      gbpReviewsTaskPost: meter(customer, postGbpReviewsTask, "local_seo"),
     },
     backlinks: {
       summary: meter(customer, fetchBacklinksSummary),

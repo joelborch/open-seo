@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
-import { rankCheckRuns } from "@/db/schema";
+import { rankCheckRuns, rankCheckTasks } from "@/db/schema";
 
 // Run-row CRUD for rank checks. Split out of RankTrackingRepository, which
 // re-exports these; the partial unique index on
@@ -94,4 +94,36 @@ export async function getActiveRunForConfig(configId: string) {
     )
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Finished runs that still have tasks in state "submitted" — posted, charged, and
+ * never collected. Oldest first, so a backlog drains in order.
+ *
+ * `since` is the floor the caller sets from DataForSEO's retention window: past it
+ * the results are purged, so retrying costs subrequests and recovers nothing.
+ * Restricted to completed/failed runs because a pending or running one still has
+ * its own workflow polling, and two collectors on one run would race.
+ */
+export async function getRunsWithSubmittedTasks(input: {
+  since: string;
+  limit: number;
+}) {
+  return db
+    .selectDistinct({
+      runId: rankCheckRuns.id,
+      projectId: rankCheckRuns.projectId,
+      startedAt: rankCheckRuns.startedAt,
+    })
+    .from(rankCheckRuns)
+    .innerJoin(rankCheckTasks, eq(rankCheckTasks.runId, rankCheckRuns.id))
+    .where(
+      and(
+        inArray(rankCheckRuns.status, ["completed", "failed"]),
+        gte(rankCheckRuns.startedAt, input.since),
+        eq(rankCheckTasks.status, "submitted"),
+      ),
+    )
+    .orderBy(asc(rankCheckRuns.startedAt))
+    .limit(input.limit);
 }

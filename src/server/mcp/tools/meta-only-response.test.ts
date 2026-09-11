@@ -18,16 +18,20 @@ import * as dataforseoResearchTools from "./dataforseo-research-tools";
 import * as estimateRankTrackerCost from "./estimate-rank-tracker-cost";
 import * as getBacklinksOverview from "./get-backlinks-overview";
 import * as getBacklinksProfile from "./get-backlinks-profile";
+import * as getCrawlArchive from "./get-crawl-archive";
 import * as getDomainKeywordSuggestions from "./get-domain-keyword-suggestions";
 import * as getDomainOverview from "./get-domain-overview";
+import * as getMapsGridRun from "./get-maps-grid-run";
 import * as getRankTracker from "./get-rank-tracker";
 import * as getSerpResults from "./get-serp-results";
 import * as googleAnalyticsTools from "./google-analytics-tools";
 import * as listProjects from "./list-projects";
 import * as listSavedKeywords from "./list-saved-keywords";
 import * as localSeoTools from "./local-seo-tools";
+import * as monitoringTools from "./monitoring-tools";
 import * as projectContext from "./project-context";
 import * as removeRankTrackingKeywords from "./remove-rank-tracking-keywords";
+import * as retrievePendingResults from "./retrieve-pending-results";
 import * as researchKeywords from "./research-keywords";
 import * as runRankTracker from "./run-rank-tracker";
 import * as saveKeywords from "./save-keywords";
@@ -43,16 +47,20 @@ const toolExports: Record<string, unknown> = {
   ...estimateRankTrackerCost,
   ...getBacklinksOverview,
   ...getBacklinksProfile,
+  ...getCrawlArchive,
   ...getDomainKeywordSuggestions,
   ...getDomainOverview,
+  ...getMapsGridRun,
   ...getRankTracker,
   ...getSerpResults,
   ...googleAnalyticsTools,
   ...listProjects,
   ...listSavedKeywords,
   ...localSeoTools,
+  ...monitoringTools,
   ...projectContext,
   ...removeRankTrackingKeywords,
+  ...retrievePendingResults,
   ...researchKeywords,
   ...runRankTracker,
   ...saveKeywords,

@@ -475,6 +475,7 @@ const PROJECTION_RUN_KINDS = [
   "audit_schedule_run",
   "rank_check_run",
   "maps_grid_run",
+  "gbp_snapshot",
 ] as const;
 
 // One row per (run, BigQuery table) projection attempt. `error` null means the
@@ -509,4 +510,137 @@ export const bigqueryProjections = pgTable(
       table.projectedAt,
     ),
   ],
+);
+
+// ============================================================================
+// Google Business Profile snapshots
+// ============================================================================
+
+// Cadence for one location's profile snapshot. Separate from `maps_grid_configs`
+// rather than more columns on it: a grid run buys grid_size² provider requests
+// and a profile snapshot buys two, so the two cadences are turned on, paused and
+// budgeted independently. `next_run_at` with `is_active` is the scheduler's claim
+// cursor, the same shape the grid and rank-check schedulers poll.
+export const gbpSchedules = pgTable(
+  "gbp_schedules",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    locationId: text("location_id")
+      .notNull()
+      .references(() => mapsGridLocations.id, { onDelete: "cascade" }),
+    // Named `schedule_interval`, as on maps_grid_configs: `interval` is a
+    // Postgres type keyword, and the seeder emits unquoted column names.
+    scheduleInterval: text("schedule_interval", {
+      enum: ["weekly", "monthly", "manual"],
+    })
+      .notNull()
+      .default("weekly"),
+    isActive: boolean("is_active").notNull().default(true),
+    lastRunAt: timestampColumn("last_run_at"),
+    nextRunAt: timestampColumn("next_run_at"),
+    lastSkipReason: text("last_skip_reason"),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    uniqueIndex("gbp_schedules_location_idx").on(table.locationId),
+    index("gbp_schedules_due_idx").on(table.isActive, table.nextRunAt),
+  ],
+);
+
+// One profile reading per location per day. `location_id` carries no FK, same
+// convention as maps_grid_cells: the rating and review-count history is the whole
+// point of the table and has to outlive the location row being edited away. The
+// unique (location_id, run_date) is what makes a capture idempotent — a second
+// call on the same day returns the existing row instead of buying the profile
+// again.
+//
+// Scalars only: opening hours are a nested per-weekday structure with no
+// queryable aggregate, so they are deliberately not stored. `reviews_collected_at`
+// is the reviews lifecycle: DataForSEO queues the reviews task, so a snapshot can
+// exist with its provider task id and no review rows yet, and NULL here is what
+// tells the collector the task is still owed.
+export const gbpSnapshots = pgTable(
+  "gbp_snapshots",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    locationId: text("location_id").notNull(),
+    runDate: text("run_date").notNull(),
+    placeId: text("place_id"),
+    cid: text("cid"),
+    name: text("name"),
+    primaryCategory: text("primary_category"),
+    rating: real("rating"),
+    reviewsCount: integer("reviews_count"),
+    isClaimed: boolean("is_claimed"),
+    address: text("address"),
+    phone: text("phone"),
+    website: text("website"),
+    photosCount: integer("photos_count"),
+    costMicros: microsColumn("cost_micros"),
+    providerTaskId: text("provider_task_id"),
+    reviewsCollectedAt: timestampColumn("reviews_collected_at"),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    uniqueIndex("gbp_snapshots_location_run_date_idx").on(
+      table.locationId,
+      table.runDate,
+    ),
+    // The history read and the projection backlog both scan by project, newest
+    // first.
+    index("gbp_snapshots_project_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
+// The profile's attribute chips, one row per value, so "did this location lose
+// `wheelchair_accessible_entrance`" is a join rather than JSON parsing. `key` is
+// DataForSEO's attribute group ("service_options", "accessibility"); the
+// additional categories Google lists under the primary one are carried here too,
+// under the key `additional_category`, because they are the same shape — a
+// repeated label per snapshot — and do not earn a third table.
+export const gbpSnapshotAttributes = pgTable(
+  "gbp_snapshot_attributes",
+  {
+    id: serial("id").primaryKey(),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => gbpSnapshots.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+  },
+  (table) => [
+    // Leftmost column is snapshotId, so this also serves per-snapshot lookups.
+    uniqueIndex("gbp_snapshot_attributes_snapshot_value_idx").on(
+      table.snapshotId,
+      table.key,
+      table.value,
+    ),
+  ],
+);
+
+// The newest reviews as of one snapshot. Rows are written in the provider's
+// newest-first order and read back by ascending `id`, which keeps the ordering
+// dialect-neutral: SQLite and Postgres disagree about where NULLs sort, so
+// ordering on a nullable `published_at` would not be stable across both.
+export const gbpSnapshotReviews = pgTable(
+  "gbp_snapshot_reviews",
+  {
+    id: serial("id").primaryKey(),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => gbpSnapshots.id, { onDelete: "cascade" }),
+    reviewId: text("review_id"),
+    rating: integer("rating"),
+    author: text("author"),
+    publishedAt: text("published_at"),
+    text: text("text"),
+    ownerReply: boolean("owner_reply").notNull().default(false),
+  },
+  (table) => [index("gbp_snapshot_reviews_snapshot_idx").on(table.snapshotId)],
 );

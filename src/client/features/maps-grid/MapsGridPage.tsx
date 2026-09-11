@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { GbpProfileSection } from "@/client/features/gbp/GbpProfileSection";
 import { MapsGridConfigPanel } from "@/client/features/maps-grid/MapsGridConfigPanel";
 import { MapsGridLocationForm } from "@/client/features/maps-grid/MapsGridLocationForm";
 import { MapsGridResults } from "@/client/features/maps-grid/MapsGridResults";
@@ -138,6 +139,11 @@ export function MapsGridPage({ projectId }: { projectId: string }) {
 
       {selectedLocation ? (
         <>
+          <GbpProfileSection
+            key={`gbp-${selectedLocation.id}`}
+            projectId={projectId}
+            locationId={selectedLocation.id}
+          />
           <MapsGridConfigPanel
             key={selectedLocation.id}
             projectId={projectId}

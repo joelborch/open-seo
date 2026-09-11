@@ -5,6 +5,7 @@ const projectionRunKindSchema = z.enum([
   "audit_schedule_run",
   "rank_check_run",
   "maps_grid_run",
+  "gbp_snapshot",
 ]);
 
 export const getBigQueryStatusSchema = z.object({

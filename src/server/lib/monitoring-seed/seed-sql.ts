@@ -98,7 +98,8 @@ function renderSeedRow(row: SeedRow): string {
 /**
  * The plan as insert-if-missing rows, parents before children: a project's
  * BigQuery target and audit schedule, then each maps location with its match
- * terms, grid config and grid keywords, then the rank config and its keywords.
+ * terms, grid config, Business Profile schedule and grid keywords, then the rank
+ * config and its keywords.
  */
 export function buildSeedRows(plans: ClientSeedPlan[]): SeedRow[] {
   const rows: SeedRow[] = [];
@@ -195,6 +196,20 @@ export function buildSeedRows(plans: ClientSeedPlan[]): SeedRow[] {
         // No unique index on (project_id, location_id) — one config per
         // location is a seeder invariant, and the guard enforces it here.
         match: { project_id: projectId, location_id: locationId },
+      });
+
+      rows.push({
+        table: "gbp_schedules",
+        values: {
+          id: seedUuid(`gbp_schedules:${projectId}:${location.slug}`),
+          project_id: projectId,
+          location_id: locationId,
+          schedule_interval: location.gbpSchedule.scheduleInterval,
+          is_active: location.gbpSchedule.isActive,
+          next_run_at: location.gbpSchedule.nextRunAt,
+        },
+        // One schedule per location, which the unique index enforces.
+        match: { location_id: locationId },
       });
 
       for (const keyword of location.keywords) {

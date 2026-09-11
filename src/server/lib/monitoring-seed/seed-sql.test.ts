@@ -115,6 +115,7 @@ describe("seed-sql emission", () => {
       maps_grid_locations: 1,
       maps_grid_location_match_terms: 1,
       maps_grid_configs: 1,
+      gbp_schedules: 1,
       maps_grid_keywords: 2,
       rank_tracking_configs: 2,
       rank_tracking_keywords: 2,
@@ -126,7 +127,7 @@ describe("seed-sql emission", () => {
     // A second, independent plan build: next_quick_at / next_check_at differ
     // between the two (the shared helpers pick a random hour), ids must not.
     expect(rowIds(buildRows())).toEqual(first);
-    expect(first).toHaveLength(10);
+    expect(first).toHaveLength(11);
     for (const id of first) {
       expect(id).toMatch(
         /:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,

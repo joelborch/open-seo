@@ -1,0 +1,348 @@
+{
+  "version": "0.1.20260902",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "09111453-1337-0139-0000-665be8e503ac",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "cost": 0.0035,
+      "result_count": 1,
+      "path": ["v3", "serp", "google", "organic", "live", "advanced"],
+      "data": {
+        "api": "serp",
+        "function": "live",
+        "se": "google",
+        "se_type": "organic",
+        "keyword": "sleep apnea dentist",
+        "language_code": "en",
+        "device": "mobile",
+        "os": "android",
+        "depth": 20,
+        "load_async_ai_overview": true
+      },
+      "result": [
+        {
+          "keyword": "sleep apnea dentist",
+          "type": "organic",
+          "se_domain": "google.com",
+          "location_code": 1026481,
+          "language_code": "en",
+          "check_url": "https://www.google.com/search?q=sleep%20apnea%20dentist&hl=en&gl=US&ie=UTF-8&uule=w+CAIQIFISCQGFjUi0uECGETsFZfPeAg3K",
+          "datetime": "2026-09-11 14:53:38 +00:00",
+          "item_types": [
+            "local_pack",
+            "people_also_ask",
+            "organic",
+            "knowledge_graph_expanded_item",
+            "people_also_search"
+          ],
+          "se_results_count": 0,
+          "items_count": 10,
+          "items": [
+            {
+              "type": "local_pack",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "title": "Houston Dental Sleep Apnea Solutions",
+              "description": "Open · Closes 4 PM · 2111 W Loop S Ste 130",
+              "domain": "houstondentalsleep.com",
+              "phone": "+18324307729",
+              "booking_url": null,
+              "url": "https://houstondentalsleep.com/?utm_source=google&utm_medium=organic&utm_campaign=gbp",
+              "is_paid": false,
+              "rating": {
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": 24,
+                "rating_max": 5
+              },
+              "cid": "2419556538232556825",
+              "rectangle": null
+            },
+            {
+              "type": "local_pack",
+              "rank_group": 2,
+              "rank_absolute": 2,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "title": "Houston Sleep Well",
+              "description": "Open · Closes 12 PM · 7000 Fannin St #1660",
+              "domain": "www.houstonsleepwell.com",
+              "phone": "+17137969600",
+              "booking_url": null,
+              "url": "https://www.houstonsleepwell.com/",
+              "is_paid": false,
+              "rating": {
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": 207,
+                "rating_max": 5
+              },
+              "cid": "8567139249421477914",
+              "rectangle": null
+            },
+            {
+              "type": "people_also_ask",
+              "rank_group": 1,
+              "rank_absolute": 3,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "items": [
+                {
+                  "type": "people_also_ask_element",
+                  "title": "Can sleep apnea be treated by a dentist?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                },
+                {
+                  "type": "people_also_ask_element",
+                  "title": "How much is it usually for sleep apnea mouth guard from a dentist?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                },
+                {
+                  "type": "people_also_ask_element",
+                  "title": "What does a dentist do for sleep apnea?",
+                  "seed_question": null,
+                  "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+                  "expanded_element": [
+                    {
+                      "type": "people_also_ask_ai_overview_expanded_element",
+                      "items": null,
+                      "references": null,
+                      "asynchronous_ai_overview": true
+                    }
+                  ]
+                }
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 1,
+              "rank_absolute": 4,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "domain": "www.utdentists.com",
+              "title": "Sleep Apnea - Services",
+              "url": "https://www.utdentists.com/services/sleep-apnea",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.utdentists.com",
+              "website_name": "UT Dentists",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "UT Dentists at UTHealth Houston can treat your obstructive sleep apnea, central…",
+              "pre_snippet": null,
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": null,
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": [
+                "urbn dental",
+                "ut dental school",
+                "urbn dental"
+              ],
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": null,
+              "rectangle": null
+            },
+            {
+              "type": "knowledge_graph_expanded_item",
+              "rank_group": 1,
+              "rank_absolute": 5,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "title": "Treatments. What are the treatments offered by a sleep apnea dentist?",
+              "data_attrid": "lab/title/Treatments",
+              "expanded_element": [
+                {
+                  "type": "knowledge_graph_expanded_element",
+                  "featured_title": null,
+                  "url": null,
+                  "domain": null,
+                  "title": "AI Overview",
+                  "snippet": "Sleep apnea dentists primarily offer Oral Appliance Therapy (OAT), creating cust…",
+                  "images": null,
+                  "timestamp": null,
+                  "table": null
+                }
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "knowledge_graph_expanded_item",
+              "rank_group": 2,
+              "rank_absolute": 6,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "title": "Qualifications. What are the qualifications of a sleep apnea dentist?",
+              "data_attrid": "lab/title/Qualifications",
+              "expanded_element": [
+                {
+                  "type": "knowledge_graph_expanded_element",
+                  "featured_title": null,
+                  "url": null,
+                  "domain": null,
+                  "title": "AI Overview",
+                  "snippet": "A qualified sleep apnea dentist typically holds active licensure, has completed…",
+                  "images": null,
+                  "timestamp": null,
+                  "table": null
+                }
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 2,
+              "rank_absolute": 10,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "domain": "urbndental.com",
+              "title": "Sleep Apnea Dentist in Uptown Houston",
+              "url": "https://urbndental.com/texas/houston-dental-services/sleep-apnea/",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://urbndental.com",
+              "website_name": "URBN Dental",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "We offer a sleep-friendly option. Our sleep apnea dentist uses dental appliances…",
+              "pre_snippet": "02/15/2024 00:00:00",
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": null,
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": [
+                "urbn dental",
+                "ut dental school",
+                "urbn dental"
+              ],
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": "2024-02-15 00:00:00 +00:00",
+              "rectangle": null
+            },
+            {
+              "type": "organic",
+              "rank_group": 3,
+              "rank_absolute": 11,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/…",
+              "domain": "www.drfawcett.com",
+              "title": "Sleep Apnea and Snoring in Houston, TX",
+              "url": "https://www.drfawcett.com/dental-services/advanced-dental-care/sleep-apnea-and-snoring/",
+              "cache_url": null,
+              "related_search_url": null,
+              "breadcrumb": "https://www.drfawcett.com",
+              "website_name": "Fawcett Center for Dentistry",
+              "is_image": false,
+              "is_video": false,
+              "is_featured_snippet": false,
+              "is_malicious": false,
+              "is_web_story": false,
+              "checks": null,
+              "description": "Advanced sleep apnea and snoring treatments from our Houston dentist can give yo…",
+              "pre_snippet": null,
+              "extended_snippet": null,
+              "images": null,
+              "amp_version": false,
+              "rating": null,
+              "price": null,
+              "highlighted": null,
+              "links": null,
+              "faq": null,
+              "extended_people_also_search": [
+                "urbn dental",
+                "ut dental school",
+                "urbn dental"
+              ],
+              "about_this_result": null,
+              "related_result": null,
+              "timestamp": null,
+              "rectangle": null
+            },
+            {
+              "type": "people_also_search",
+              "rank_group": 1,
+              "rank_absolute": 19,
+              "page": 1,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/div[1]/div[26]",
+              "title": "People also search for",
+              "items": [
+                "URBN Dental",
+                "UT dental school Invisalign",
+                "URBN Dental Montrose"
+              ],
+              "rectangle": null
+            },
+            {
+              "type": "people_also_search",
+              "rank_group": 2,
+              "rank_absolute": 30,
+              "page": 2,
+              "position": "left",
+              "xpath": "/html[1]/body[1]/div[4]/div[2]/div[1]/div[13]/div[3]/div[1]/div[1]/div[11]",
+              "title": "People also search for",
+              "items": [
+                "URBN Dental",
+                "UT dental school Invisalign",
+                "URBN Dental Montrose"
+              ],
+              "rectangle": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

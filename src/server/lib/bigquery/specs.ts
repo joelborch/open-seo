@@ -27,6 +27,7 @@ export const BQ_TABLE_SPECS: Record<
   | "maps_rankings"
   | "keyword_rankings"
   | "aio_tracking"
+  | "gbp_snapshots"
   | "weekly_health_metrics"
   | "observations",
   BqTableSpec
@@ -109,6 +110,48 @@ export const BQ_TABLE_SPECS: Record<
       { name: "request_id", type: "STRING" },
     ],
     mergeKeys: ["report_date", "keyword", "run_id"],
+  },
+
+  /**
+   * Google Business Profile state, one row per location per observation date.
+   *
+   * New to open-seo: seo-yolo's `gbp` source is the Business Profile *performance*
+   * API (views, calls, direction requests), which it folds into
+   * `weekly_health_metrics` as `gbp_<metric>` rows. That stays where it is — this
+   * table is the profile itself (rating, review count, category, claimed status,
+   * NAP, attributes), which seo-yolo never captured.
+   *
+   * The merge key carries no `run_id`, unlike the other client tables: a location
+   * has at most one snapshot per date by construction (the unique
+   * (location_id, run_date) in `gbp_snapshots`), so a re-capture is a correction of
+   * that day's reading rather than a new observation to keep alongside it.
+   */
+  gbp_snapshots: {
+    table: "gbp_snapshots",
+    scope: "client",
+    columns: [
+      { name: "report_date", type: "DATE" },
+      { name: "location_slug", type: "STRING" },
+      { name: "location_name", type: "STRING" },
+      { name: "profile_name", type: "STRING" },
+      { name: "place_id", type: "STRING" },
+      { name: "cid", type: "STRING" },
+      { name: "primary_category", type: "STRING" },
+      { name: "rating", type: "FLOAT64" },
+      { name: "reviews_count", type: "INT64" },
+      { name: "reviews_count_delta", type: "INT64" },
+      { name: "is_claimed", type: "BOOL" },
+      { name: "address", type: "STRING" },
+      { name: "phone", type: "STRING" },
+      { name: "website", type: "STRING" },
+      { name: "photos_count", type: "INT64" },
+      { name: "attributes", type: "JSON" },
+      { name: "source", type: "STRING" },
+      { name: "pulled_at", type: "TIMESTAMP" },
+      { name: "run_id", type: "STRING" },
+      { name: "request_id", type: "STRING" },
+    ],
+    mergeKeys: ["report_date", "location_slug"],
   },
 
   weekly_health_metrics: {

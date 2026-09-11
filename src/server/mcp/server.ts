@@ -62,6 +62,13 @@ import {
   getSearchConsolePerformanceTool,
   inspectUrlsTool,
 } from "@/server/mcp/tools/search-console-tools";
+import { getCrawlArchiveTool } from "@/server/mcp/tools/get-crawl-archive";
+import { getMapsGridRunTool } from "@/server/mcp/tools/get-maps-grid-run";
+import {
+  getMonitoringStatusTool,
+  listMonitoringRunsTool,
+} from "@/server/mcp/tools/monitoring-tools";
+import { retrievePendingResultsTool } from "@/server/mcp/tools/retrieve-pending-results";
 import {
   getAuditIssuesTool,
   getAuditPagesTool,
@@ -203,6 +210,11 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(getAuditStatusTool);
   register(getAuditIssuesTool);
   register(getAuditPagesTool);
+  register(getMonitoringStatusTool);
+  register(listMonitoringRunsTool);
+  register(getMapsGridRunTool);
+  register(retrievePendingResultsTool);
+  register(getCrawlArchiveTool);
 
   return server;
 }

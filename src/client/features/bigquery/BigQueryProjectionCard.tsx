@@ -11,6 +11,7 @@ const RUN_KIND_LABELS = {
   audit_schedule_run: "Scheduled crawl",
   rank_check_run: "Rank check",
   maps_grid_run: "Maps grid",
+  gbp_snapshot: "Business Profile",
 } as const;
 
 /**

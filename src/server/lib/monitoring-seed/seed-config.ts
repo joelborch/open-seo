@@ -332,6 +332,11 @@ export function buildSeedingPlan(
             isActive: true,
             nextRunAt: null,
           },
+          gbpSchedule: {
+            scheduleInterval: "weekly",
+            isActive: true,
+            nextRunAt: null,
+          },
           keywords: [...sharedKeywords],
         });
       }

@@ -60,6 +60,7 @@ export async function seedMonitoring(
   auditSchedulesInserted: number;
   rankConfigsInserted: number;
   rankKeywordsInserted: number;
+  gbpSchedulesInserted: number;
 }> {
   let locationsUpserted = 0;
   let configsUpserted = 0;
@@ -69,6 +70,7 @@ export async function seedMonitoring(
   let auditSchedulesInserted = 0;
   let rankConfigsInserted = 0;
   let rankKeywordsInserted = 0;
+  let gbpSchedulesInserted = 0;
 
   for (const plan of plans) {
     // 1. Verify project exists in DB
@@ -269,6 +271,23 @@ export async function seedMonitoring(
         }
         configsUpserted += 1;
 
+        // Business Profile snapshot schedule — one per location, left alone if it
+        // already exists so a re-run never re-arms a cadence someone paused.
+        const existingGbpSchedule = await db.query.gbpSchedules.findFirst({
+          where: eq(monitoringSchema.gbpSchedules.locationId, locationId),
+        });
+        if (!existingGbpSchedule) {
+          await db.insert(monitoringSchema.gbpSchedules).values({
+            id: crypto.randomUUID(),
+            projectId: plan.projectId,
+            locationId,
+            scheduleInterval: loc.gbpSchedule.scheduleInterval,
+            isActive: loc.gbpSchedule.isActive,
+            nextRunAt: loc.gbpSchedule.nextRunAt,
+          });
+          gbpSchedulesInserted += 1;
+        }
+
         // Keywords (unique on configId, keyword)
         for (const keyword of loc.keywords) {
           await db
@@ -295,6 +314,7 @@ export async function seedMonitoring(
     auditSchedulesInserted,
     rankConfigsInserted,
     rankKeywordsInserted,
+    gbpSchedulesInserted,
   };
 }
 
@@ -336,6 +356,9 @@ export function printPlan(plans: ClientSeedPlan[]): void {
         console.log(`      Match Terms:   [${loc.matchTerms.join(", ")}]`);
         console.log(
           `      Grid Config:   ${loc.config.gridSize}x${loc.config.gridSize}, zoom=${loc.config.zoom}, device=${loc.config.device}, schedule=${loc.config.scheduleInterval}`,
+        );
+        console.log(
+          `      GBP Snapshot:  ${loc.gbpSchedule.scheduleInterval}, active=${loc.gbpSchedule.isActive} (next run unset until saved in-app)`,
         );
         console.log(
           `      Keywords (${loc.keywords.length}): [${loc.keywords.slice(0, 5).join(", ")}${loc.keywords.length > 5 ? ", ..." : ""}]`,
@@ -461,7 +484,8 @@ async function main(): Promise<void> {
         `${results.locationsUpserted} location(s), ` +
         `${results.configsUpserted} config(s), ` +
         `${results.matchTermsInserted} match term(s), ` +
-        `${results.keywordsInserted} keyword(s).`,
+        `${results.keywordsInserted} keyword(s), ` +
+        `${results.gbpSchedulesInserted} GBP schedule(s).`,
     );
   } finally {
     await dispose();

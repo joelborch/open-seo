@@ -5,64 +5,143 @@ import { z } from "zod";
 // endpoint callers there stay readable, and so the live and task_get paths share
 // one interpretation of a SERP.
 
-const serpReferenceSchema = z
-  .object({
-    domain: z.string().nullable().optional(),
-    url: z.string().nullable().optional(),
-  })
-  .passthrough();
+// A cited source inside a block: `ai_overview_reference` and `link_element`
+// carry domain + url, but DataForSEO also fills these collections with plain
+// strings (`people_also_search` items are a string[]), so both shapes pass and
+// a string is read as a host candidate.
+const serpReferenceSchema = z.union([
+  z.string(),
+  z.looseObject({
+    domain: z.string().nullish(),
+    url: z.string().nullish(),
+  }),
+]);
 
 // Nested element of a feature block (`ai_overview_element`, PAA answers, …).
 // Its references/links are where an AI Overview's citations live.
-const serpNestedItemSchema = z
-  .object({
-    type: z.string().nullable().optional(),
-    domain: z.string().nullable().optional(),
-    url: z.string().nullable().optional(),
-    references: z.array(serpReferenceSchema).nullable().optional(),
-    links: z.array(serpReferenceSchema).nullable().optional(),
-  })
-  .passthrough();
+const serpNestedItemSchema = z.union([
+  z.string(),
+  z.looseObject({
+    type: z.string().nullish(),
+    domain: z.string().nullish(),
+    url: z.string().nullish(),
+    references: z.array(serpReferenceSchema).nullish(),
+    links: z.array(serpReferenceSchema).nullish(),
+  }),
+]);
 
-// Kept as a hand-written schema: the SDK's BaseSerpApiElementItem type omits
-// etv / estimated_paid_traffic_cost / backlinks_info / rank_changes, which we
-// rely on. The fields survive deserialization (the SDK copies unknown keys), so
-// validating here is both our type-safety guard and how we read those fields.
-export const serpSnapshotItemSchema = z
+// Collections any block may carry. Shared by every modeled block so a block
+// that grows an `items`/`references` list still has its citations read.
+const blockCollectionFields = {
+  items: z.array(serpNestedItemSchema).nullish(),
+  references: z.array(serpReferenceSchema).nullish(),
+  links: z.array(serpReferenceSchema).nullish(),
+};
+
+const rankFields = {
+  rank_group: z.number().nullish(),
+  rank_absolute: z.number().nullish(),
+};
+
+// Fields only an organic result carries. Hand-written rather than taken from
+// the SDK: its BaseSerpApiElementItem type omits etv /
+// estimated_paid_traffic_cost / backlinks_info / rank_changes, which keyword
+// research reads off organic results.
+const organicFields = {
+  domain: z.string().nullish(),
+  title: z.string().nullish(),
+  url: z.string().nullish(),
+  description: z.string().nullish(),
+  breadcrumb: z.string().nullish(),
+  etv: z.number().nullish(),
+  estimated_paid_traffic_cost: z.number().nullish(),
+  backlinks_info: z
+    .looseObject({
+      referring_domains: z.number().nullish(),
+      backlinks: z.number().nullish(),
+    })
+    .nullish(),
+  rank_changes: z
+    .looseObject({
+      previous_rank_absolute: z.number().nullish(),
+      is_new: z.boolean().nullish(),
+      is_up: z.boolean().nullish(),
+      is_down: z.boolean().nullish(),
+    })
+    .nullish(),
+};
+
+const organicItemSchema = z.looseObject({
+  ...blockCollectionFields,
+  ...rankFields,
+  ...organicFields,
+  type: z.literal("organic"),
+});
+
+const localPackItemSchema = z.looseObject({
+  ...blockCollectionFields,
+  ...rankFields,
+  type: z.literal("local_pack"),
+  domain: z.string().nullish(),
+  title: z.string().nullish(),
+  url: z.string().nullish(),
+  description: z.string().nullish(),
+});
+
+const aiOverviewItemSchema = z.looseObject({
+  ...blockCollectionFields,
+  ...rankFields,
+  type: z.literal("ai_overview"),
+});
+
+/** The block types the branches above model — the ones whose fields we read and
+ *  therefore hold to a precise schema instead of letting the catch-all salvage
+ *  them. Keep in sync when a branch is added. */
+const MODELED_ITEM_TYPES = new Set(["organic", "local_pack", "ai_overview"]);
+
+// Every other block type. Google adds, renames and reshapes these constantly
+// (`people_also_search`, `knowledge_graph_expanded_item`, whatever ships next
+// quarter), and we only read a block's type and where it sat, so keep those,
+// salvage the citation lists when they parse, and drop the rest. This is the
+// branch that guarantees an unmodeled block can never fail a paid-for SERP.
+// Modeled types are refused here so a malformed organic result is skipped and
+// logged rather than silently read as "not ranking".
+const otherBlockSchema = z
   .object({
     type: z.string(),
-    items: z.array(serpNestedItemSchema).nullable().optional(),
-    references: z.array(serpReferenceSchema).nullable().optional(),
-    links: z.array(serpReferenceSchema).nullable().optional(),
-    rank_group: z.number().nullable().optional(),
-    rank_absolute: z.number().nullable().optional(),
-    domain: z.string().nullable().optional(),
-    title: z.string().nullable().optional(),
-    url: z.string().nullable().optional(),
-    description: z.string().nullable().optional(),
-    breadcrumb: z.string().nullable().optional(),
-    etv: z.number().nullable().optional(),
-    estimated_paid_traffic_cost: z.number().nullable().optional(),
-    backlinks_info: z
-      .object({
-        referring_domains: z.number().nullable().optional(),
-        backlinks: z.number().nullable().optional(),
-      })
-      .passthrough()
-      .nullable()
-      .optional(),
-    rank_changes: z
-      .object({
-        previous_rank_absolute: z.number().nullable().optional(),
-        is_new: z.boolean().nullable().optional(),
-        is_up: z.boolean().nullable().optional(),
-        is_down: z.boolean().nullable().optional(),
-      })
-      .passthrough()
-      .nullable()
-      .optional(),
+    rank_group: z.number().nullish().catch(null),
+    rank_absolute: z.number().nullish().catch(null),
+    items: z.array(serpNestedItemSchema).nullish().catch(null),
+    references: z.array(serpReferenceSchema).nullish().catch(null),
+    links: z.array(serpReferenceSchema).nullish().catch(null),
   })
-  .passthrough();
+  .refine((item) => !MODELED_ITEM_TYPES.has(item.type), {
+    error: "modeled SERP block types must satisfy their own schema",
+  });
+
+// The one item shape the rest of the app reads, whichever block it came from.
+// Every field is optional here: which of them a block actually carries is what
+// the branches above decide.
+const serpItemFieldsSchema = z.looseObject({
+  ...blockCollectionFields,
+  ...rankFields,
+  ...organicFields,
+  type: z.string(),
+});
+
+/**
+ * One SERP item. Modeled blocks are validated field by field; anything else
+ * passes through the catch-all, and the union is piped back through the wide
+ * shape so callers read one item type instead of a four-way union.
+ */
+export const serpSnapshotItemSchema = z
+  .union([
+    organicItemSchema,
+    localPackItemSchema,
+    aiOverviewItemSchema,
+    otherBlockSchema,
+  ])
+  .pipe(serpItemFieldsSchema);
 
 export type SerpLiveItem = z.infer<typeof serpSnapshotItemSchema>;
 
@@ -137,11 +216,15 @@ function citedHosts(item: SerpLiveItem): string[] {
     refs: z.infer<typeof serpReferenceSchema>[] | null | undefined,
   ) => {
     for (const ref of refs ?? []) {
-      const host = toHost(ref.domain ?? ref.url);
+      // A string entry is either a bare URL or a plain label; toHost reads the
+      // first and the second simply never matches a tracked domain.
+      const host =
+        typeof ref === "string" ? toHost(ref) : toHost(ref.domain ?? ref.url);
       if (host && !hosts.includes(host)) hosts.push(host);
     }
   };
   for (const element of item.items ?? []) {
+    if (typeof element === "string") continue;
     add(element.references);
     add(element.links);
   }

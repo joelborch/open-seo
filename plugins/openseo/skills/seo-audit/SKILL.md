@@ -36,6 +36,16 @@ The project-context tools are free and shared with the app and other agents.
 
 Keep total spend modest: one audit, one backlinks overview, at most one domain overview, and at most one keyword-research call. Only the overview and keyword lookups spend credits.
 
+## Monitoring tools (read-only, free)
+
+Use these when the project already has monitoring configured — scheduled crawls, scheduled rank checks, or a Maps grid — and the question is what changed rather than what a fresh crawl says. None of them spend credits or buy provider data.
+
+- `get_monitoring_status`: the newest run of every loop for a project — scheduled crawl per cadence (status, pages, health score and its delta, crawl-archive prefix), rank check per tracker (status, method, keywords checked, spend and whether that spend is final), Maps grid run per config (cells collected, visibility score, share of local voice, spend) — plus the BigQuery projection ledger rows for those runs. Omit `projectId` to sweep the organization. Start here: a health-score delta from the last scheduled crawl is usually a better verdict than a one-off audit.
+- `list_monitoring_runs`: the same per-run fields as history for one project and one loop (`kind`: `crawl`, `rank`, or `grid`), oldest first, so you can quote the trend rather than a single number.
+- `get_maps_grid_run`: one grid run in full — every cell's rank, its top competitors, and the run and per-keyword rollups. The text renders each keyword's panel as an ASCII heatmap with north at the top, which is what separates "ranks at the storefront only" from "ranks across the service area".
+- `get_crawl_archive`: the manifest of a scheduled crawl's R2 archive (row counts, parts, health score, whether the crawl was truncated or the link graph incomplete) plus a 50-row sample of the archived issues. Only scheduled crawls are archived; for a manual audit read `get_audit_issues`.
+- `retrieve_pending_results`: collect rank-check or grid results the run already paid for but never stored, after a run died mid-poll. It buys nothing (provider `task_get` is free), and it refuses a run still in flight. Reach for this instead of re-running a check the user has already been charged for.
+
 ## Workflow
 
 1. `whoami`, then resolve the `projectId`.

@@ -2,34 +2,30 @@
  * Reads the run rows a BigQuery projection is built from, and owns the
  * `bigquery_projections` ledger that says what has already been projected.
  *
- * One repository rather than one per run kind: the three source reads and the
- * ledger are always used together by the projection service, and the "what is
- * still pending" query has to span all three run tables anyway.
+ * One repository rather than one per run kind: the source reads and the ledger are
+ * always used together by the projection service, and the "what is still pending"
+ * query has to span every run table anyway.
  */
-import { and, asc, desc, eq, lt, sql, type SQLWrapper } from "drizzle-orm";
+import { asc, and, desc, eq, lt, sql, type SQLWrapper } from "drizzle-orm";
 import { sort } from "remeda";
 import { db } from "@/db";
 import {
-  auditRunIssueCounts,
   auditScheduleRuns,
   bigqueryProjections,
-  mapsGridCellResults,
-  mapsGridCells,
-  mapsGridConfigs,
-  mapsGridLocations,
+  gbpSnapshots,
   mapsGridRuns,
   projectBigqueryTargets,
   rankCheckRuns,
-  rankSnapshotFeatures,
-  rankSnapshots,
-  rankTrackingConfigs,
 } from "@/db/schema";
+import {
+  getAuditRunSource,
+  getGbpSnapshotSource,
+  getMapsRunSource,
+  getRankRunSource,
+} from "@/server/features/bigquery-projection/repositories/projectionSourceQueries";
 import type {
-  AuditRunSource,
-  MapsRunSource,
   ProjectionRunKind,
   ProjectionTableName,
-  RankRunSource,
 } from "@/server/features/bigquery-projection/projectionRows";
 
 /** Ledger rows shown on the settings card; one project's history is small. */
@@ -182,7 +178,41 @@ async function getPendingMapsRuns(
 }
 
 /**
- * Completed runs of all three kinds that still owe at least one table, oldest
+ * GBP snapshots still owing a table. The snapshot row only exists once the profile
+ * read succeeded, so its presence is what "completed" means for this kind — there
+ * is no status column to filter on. `created_at` is the cursor rather than
+ * `run_date`, because a backfilled capture for an older date is new work.
+ */
+async function getPendingGbpSnapshots(
+  cutoff: string,
+  limit: number,
+  projectId?: string,
+) {
+  return db
+    .select({
+      runId: gbpSnapshots.id,
+      projectId: gbpSnapshots.projectId,
+      completedAt: gbpSnapshots.createdAt,
+    })
+    .from(gbpSnapshots)
+    .innerJoin(
+      projectBigqueryTargets,
+      eq(projectBigqueryTargets.projectId, gbpSnapshots.projectId),
+    )
+    .where(
+      and(
+        sql`${gbpSnapshots.createdAt} >= ${cutoff}`,
+        // gbp_snapshots + observations.
+        lt(projectedTableCount("gbp_snapshot", gbpSnapshots.id), 2),
+        projectId ? eq(gbpSnapshots.projectId, projectId) : undefined,
+      ),
+    )
+    .orderBy(asc(gbpSnapshots.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Completed runs of every kind that still owe at least one table, oldest
  * first. Only projects with a `project_bigquery_targets` row are considered, and
  * only runs inside the lookback window — a first deployment must not try to
  * backfill every run ever recorded (the settings card projects an older run on
@@ -194,15 +224,17 @@ async function getPendingRuns(input: {
   /** Set by the on-demand path to scope the backlog to one project. */
   projectId?: string;
 }): Promise<PendingRun[]> {
-  const [audit, rank, maps] = await Promise.all([
+  const [audit, rank, maps, gbp] = await Promise.all([
     getPendingAuditRuns(input.cutoff, input.limit, input.projectId),
     getPendingRankRuns(input.cutoff, input.limit, input.projectId),
     getPendingMapsRuns(input.cutoff, input.limit, input.projectId),
+    getPendingGbpSnapshots(input.cutoff, input.limit, input.projectId),
   ]);
   const kinds: Array<[ProjectionRunKind, typeof audit]> = [
     ["audit_schedule_run", audit],
     ["rank_check_run", rank],
     ["maps_grid_run", maps],
+    ["gbp_snapshot", gbp],
   ];
   const all = kinds.flatMap(([runKind, runs]) =>
     runs.map((run) => ({
@@ -216,156 +248,6 @@ async function getPendingRuns(input: {
     0,
     input.limit,
   );
-}
-
-async function getAuditRunSource(
-  runId: string,
-): Promise<{ projectId: string; source: AuditRunSource } | null> {
-  const [run] = await db
-    .select({
-      id: auditScheduleRuns.id,
-      projectId: auditScheduleRuns.projectId,
-      cadence: auditScheduleRuns.cadence,
-      triggeredAt: auditScheduleRuns.triggeredAt,
-      completedAt: auditScheduleRuns.completedAt,
-      pagesCrawled: auditScheduleRuns.pagesCrawled,
-      pagesWithErrors: auditScheduleRuns.pagesWithErrors,
-      pagesWithWarnings: auditScheduleRuns.pagesWithWarnings,
-      pagesWithNotices: auditScheduleRuns.pagesWithNotices,
-      pagesBlocked: auditScheduleRuns.pagesBlocked,
-      healthScore: auditScheduleRuns.healthScore,
-      healthScoreDelta: auditScheduleRuns.healthScoreDelta,
-    })
-    .from(auditScheduleRuns)
-    .where(eq(auditScheduleRuns.id, runId))
-    .limit(1);
-  if (!run) return null;
-
-  const issueCounts = await db
-    .select({
-      issueType: auditRunIssueCounts.issueType,
-      severity: auditRunIssueCounts.severity,
-      pages: auditRunIssueCounts.pages,
-    })
-    .from(auditRunIssueCounts)
-    .where(eq(auditRunIssueCounts.runId, runId));
-
-  return { projectId: run.projectId, source: { run, issueCounts } };
-}
-
-async function getRankRunSource(
-  runId: string,
-): Promise<{ projectId: string; source: RankRunSource } | null> {
-  const [run] = await db
-    .select({
-      id: rankCheckRuns.id,
-      projectId: rankCheckRuns.projectId,
-      startedAt: rankCheckRuns.startedAt,
-      completedAt: rankCheckRuns.completedAt,
-      locationName: rankTrackingConfigs.locationName,
-      locationCode: rankTrackingConfigs.locationCode,
-    })
-    .from(rankCheckRuns)
-    .innerJoin(
-      rankTrackingConfigs,
-      eq(rankTrackingConfigs.id, rankCheckRuns.configId),
-    )
-    .where(eq(rankCheckRuns.id, runId))
-    .limit(1);
-  if (!run) return null;
-
-  const snapshots = await db
-    .select({
-      id: rankSnapshots.id,
-      keyword: rankSnapshots.keyword,
-      device: rankSnapshots.device,
-      position: rankSnapshots.position,
-      url: rankSnapshots.url,
-      aioPresent: rankSnapshots.aioPresent,
-      aioClientCited: rankSnapshots.aioClientCited,
-      aioCitationPosition: rankSnapshots.aioCitationPosition,
-    })
-    .from(rankSnapshots)
-    .where(eq(rankSnapshots.runId, runId));
-
-  const features = await db
-    .select({
-      snapshotId: rankSnapshotFeatures.snapshotId,
-      featureType: rankSnapshotFeatures.featureType,
-      rankAbsolute: rankSnapshotFeatures.rankAbsolute,
-      clientPresent: rankSnapshotFeatures.clientPresent,
-    })
-    .from(rankSnapshotFeatures)
-    .innerJoin(
-      rankSnapshots,
-      eq(rankSnapshots.id, rankSnapshotFeatures.snapshotId),
-    )
-    .where(eq(rankSnapshots.runId, runId));
-
-  return {
-    projectId: run.projectId,
-    source: {
-      run,
-      config: {
-        locationName: run.locationName,
-        locationCode: run.locationCode,
-      },
-      snapshots,
-      features,
-    },
-  };
-}
-
-async function getMapsRunSource(
-  runId: string,
-): Promise<{ projectId: string; source: MapsRunSource } | null> {
-  const [run] = await db
-    .select({
-      id: mapsGridRuns.id,
-      projectId: mapsGridRuns.projectId,
-      startedAt: mapsGridRuns.startedAt,
-      completedAt: mapsGridRuns.completedAt,
-      locationSlug: mapsGridLocations.slug,
-    })
-    .from(mapsGridRuns)
-    .innerJoin(mapsGridConfigs, eq(mapsGridConfigs.id, mapsGridRuns.configId))
-    .innerJoin(
-      mapsGridLocations,
-      eq(mapsGridLocations.id, mapsGridConfigs.locationId),
-    )
-    .where(eq(mapsGridRuns.id, runId))
-    .limit(1);
-  if (!run) return null;
-
-  const cells = await db
-    .select({
-      id: mapsGridCells.id,
-      keyword: mapsGridCells.keyword,
-      lat: mapsGridCells.lat,
-      lng: mapsGridCells.lng,
-      clientRank: mapsGridCells.clientRank,
-      providerTaskId: mapsGridCells.providerTaskId,
-    })
-    .from(mapsGridCells)
-    .where(eq(mapsGridCells.runId, runId));
-
-  const cellResults = await db
-    .select({
-      cellId: mapsGridCellResults.cellId,
-      name: mapsGridCellResults.name,
-      rank: mapsGridCellResults.rank,
-      rating: mapsGridCellResults.rating,
-      url: mapsGridCellResults.url,
-      isClient: mapsGridCellResults.isClient,
-    })
-    .from(mapsGridCellResults)
-    .innerJoin(mapsGridCells, eq(mapsGridCells.id, mapsGridCellResults.cellId))
-    .where(eq(mapsGridCells.runId, runId));
-
-  return {
-    projectId: run.projectId,
-    source: { run, locationSlug: run.locationSlug, cells, cellResults },
-  };
 }
 
 /**
@@ -427,6 +309,7 @@ export const BigqueryProjectionRepository = {
   getAuditRunSource,
   getRankRunSource,
   getMapsRunSource,
+  getGbpSnapshotSource,
   recordProjection,
   getLedgerForProject,
 };

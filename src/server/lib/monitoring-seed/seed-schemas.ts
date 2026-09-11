@@ -223,6 +223,17 @@ export interface LocationSeedPlan {
     isActive: boolean;
     nextRunAt: null;
   };
+  /**
+   * Business Profile snapshot cadence for this location. `next_run_at` is null for
+   * the same reason the grid config's is: the scheduler's due query excludes a null
+   * cursor, so seeding records the intent without arming any provider spend until
+   * someone saves the schedule in the app.
+   */
+  gbpSchedule: {
+    scheduleInterval: "weekly";
+    isActive: boolean;
+    nextRunAt: null;
+  };
   keywords: string[];
 }
 

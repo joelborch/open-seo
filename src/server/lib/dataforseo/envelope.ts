@@ -306,3 +306,35 @@ export function parseTaskItems<T extends z.ZodTypeAny>(
   }
   return parsed.data;
 }
+
+/**
+ * Like parseTaskItems, but drops the items that fail validation instead of
+ * failing the whole response. For SERPs: the response is already paid for, it
+ * carries thirty heterogeneous blocks, and one block we can't read is worth far
+ * less than the rank it would throw away. Each dropped item is logged with its
+ * `type` so an unmodeled shape is visible without a customer-facing failure.
+ */
+export function parseTaskItemsSkippingInvalid<T extends z.ZodTypeAny>(
+  endpoint: string,
+  task: DataforseoTaskLike,
+  itemSchema: T,
+): Array<z.infer<T>> {
+  const first = task.result?.[0];
+  const rawItems = isRecord(first) ? first.items : undefined;
+  // An absent or null `items` is a valid empty SERP, not a broken payload.
+  if (!Array.isArray(rawItems)) return [];
+
+  const items: Array<z.infer<T>> = [];
+  for (const rawItem of rawItems) {
+    const parsed = itemSchema.safeParse(rawItem);
+    if (!parsed.success) {
+      console.warn(`dataforseo.${endpoint}.skipped-item`, {
+        type: isRecord(rawItem) ? rawItem.type : typeof rawItem,
+        issues: parsed.error.issues.slice(0, 3),
+      });
+      continue;
+    }
+    items.push(parsed.data);
+  }
+  return items;
+}

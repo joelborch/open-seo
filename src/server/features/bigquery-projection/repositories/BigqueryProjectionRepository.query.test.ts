@@ -59,6 +59,13 @@ beforeAll(async () => {
       status TEXT NOT NULL,
       completed_at TEXT
     );
+    CREATE TABLE gbp_snapshots (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      location_id TEXT NOT NULL,
+      run_date TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE bigquery_projections (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id TEXT NOT NULL,
@@ -86,6 +93,7 @@ beforeEach(async () => {
     DELETE FROM audit_schedule_runs;
     DELETE FROM rank_check_runs;
     DELETE FROM maps_grid_runs;
+    DELETE FROM gbp_snapshots;
     DELETE FROM project_bigquery_targets;
     DELETE FROM projects;
 
@@ -112,6 +120,9 @@ describe("getPendingRuns", () => {
         VALUES ('rank-1', 'p1', 'completed', '2026-03-03T00:00:00.000Z');
       INSERT INTO maps_grid_runs (id, project_id, status, completed_at)
         VALUES ('maps-1', 'p2', 'completed', '2026-03-04T00:00:00.000Z');
+      -- A GBP snapshot has no status column: the row existing is what completes it.
+      INSERT INTO gbp_snapshots (id, project_id, location_id, run_date, created_at)
+        VALUES ('gbp-1', 'p1', 'loc-1', '2026-03-02', '2026-03-02T00:00:00.000Z');
       -- rank-1 already has keyword_rankings; aio_tracking and observations remain.
       INSERT INTO bigquery_projections
         (project_id, run_kind, run_id, "table", dataset, "rows", projected_at, error)
@@ -119,6 +130,7 @@ describe("getPendingRuns", () => {
     `);
 
     expect((await pending()).map((run) => run.runId)).toEqual([
+      "gbp-1",
       "rank-1",
       "maps-1",
       "audit-1",
@@ -150,6 +162,9 @@ describe("getPendingRuns", () => {
                ('no-target', 'p-no-target', 'completed', '2026-03-05T00:00:00.000Z');
       INSERT INTO rank_check_runs (id, project_id, status, is_subset_run, completed_at)
         VALUES ('subset', 'p1', 'completed', 1, '2026-03-05T00:00:00.000Z');
+      INSERT INTO gbp_snapshots (id, project_id, location_id, run_date, created_at)
+        VALUES ('gbp-too-old', 'p1', 'loc-1', '2026-02-01', '2026-02-01T00:00:00.000Z'),
+               ('gbp-no-target', 'p-no-target', 'loc-2', '2026-03-05', '2026-03-05T00:00:00.000Z');
     `);
 
     expect(await pending()).toEqual([]);

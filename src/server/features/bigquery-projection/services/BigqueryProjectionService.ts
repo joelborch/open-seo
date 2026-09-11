@@ -20,6 +20,7 @@ import {
 } from "@/server/features/bigquery-projection/repositories/BigqueryProjectionRepository";
 import {
   buildAuditProjection,
+  buildGbpProjection,
   buildMapsProjection,
   buildProjectionObservation,
   buildRankProjection,
@@ -100,6 +101,17 @@ async function loadSource(
           projectId: loaded.projectId,
           build: (pulledAt) =>
             buildMapsProjection({ source: loaded.source, pulledAt }),
+        }
+      );
+    }
+    case "gbp_snapshot": {
+      const loaded =
+        await BigqueryProjectionRepository.getGbpSnapshotSource(runId);
+      return (
+        loaded && {
+          projectId: loaded.projectId,
+          build: (pulledAt) =>
+            buildGbpProjection({ source: loaded.source, pulledAt }),
         }
       );
     }
@@ -322,7 +334,7 @@ export async function getBigQueryStatus(
 }
 
 /**
- * Cron body: project the oldest unprojected runs across all three kinds. Takes
+ * Cron body: project the oldest unprojected runs across every kind. Takes
  * no Env — everything it needs is the ambient `cloudflare:workers` env (the
  * BigQuery client's KV token cache) and the database.
  */

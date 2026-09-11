@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   reconcileStaleAudits: vi.fn(),
   runScheduledCrawls: vi.fn(),
   runScheduledRankChecks: vi.fn(),
+  runPendingRetrievals: vi.fn(),
   runScheduledGridRuns: vi.fn(),
+  runScheduledGbpSnapshots: vi.fn(),
   runPendingProjections: vi.fn(),
 }));
 
@@ -24,8 +26,14 @@ vi.mock("@/server/features/audit-schedules/services/scheduledCrawls", () => ({
 vi.mock("@/server/features/rank-tracking/services/scheduledRankChecks", () => ({
   runScheduledRankChecks: mocks.runScheduledRankChecks,
 }));
+vi.mock("@/server/features/monitoring/services/pendingRetrievals", () => ({
+  runPendingRetrievals: mocks.runPendingRetrievals,
+}));
 vi.mock("@/server/features/maps-grid/services/scheduledGridRuns", () => ({
   runScheduledGridRuns: mocks.runScheduledGridRuns,
+}));
+vi.mock("@/server/features/gbp/services/scheduledGbpSnapshots", () => ({
+  runScheduledGbpSnapshots: mocks.runScheduledGbpSnapshots,
 }));
 vi.mock(
   "@/server/features/bigquery-projection/services/BigqueryProjectionService",
@@ -49,6 +57,17 @@ describe("runCronLoops", () => {
     mocks.runScheduledRankChecks.mockRejectedValue(new Error("rank tick down"));
 
     await expect(runCronLoops(env)).rejects.toBe(crawlError);
+    expect(mocks.runPendingRetrievals).toHaveBeenCalled();
+    expect(mocks.runScheduledGridRuns).toHaveBeenCalled();
+    expect(mocks.runScheduledGbpSnapshots).toHaveBeenCalled();
+    expect(mocks.runPendingProjections).toHaveBeenCalled();
+  });
+
+  it("rethrows the retrieval failure once the loops behind it have run", async () => {
+    const retrievalError = new Error("task_get unavailable");
+    mocks.runPendingRetrievals.mockRejectedValue(retrievalError);
+
+    await expect(runCronLoops(env)).rejects.toBe(retrievalError);
     expect(mocks.runScheduledGridRuns).toHaveBeenCalled();
     expect(mocks.runPendingProjections).toHaveBeenCalled();
   });

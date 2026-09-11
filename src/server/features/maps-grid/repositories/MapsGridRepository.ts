@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { executeInBatches } from "@/db/runBatch";
@@ -394,6 +394,38 @@ async function getActiveRunForConfig(configId: string) {
   return rows[0] ?? null;
 }
 
+/**
+ * Finished runs that still have cells in state "submitted" — posted, charged, and
+ * never collected. Oldest first, so a backlog drains in order.
+ *
+ * `since` is the floor the caller sets from DataForSEO's retention window: past it
+ * the results are purged, so retrying costs subrequests and recovers nothing.
+ * Restricted to completed/failed runs because retrieveGridRun refuses a pending or
+ * running one — its own workflow is still polling those cells.
+ */
+async function getRunsWithSubmittedCells(input: {
+  since: string;
+  limit: number;
+}) {
+  return db
+    .selectDistinct({
+      runId: mapsGridRuns.id,
+      projectId: mapsGridRuns.projectId,
+      startedAt: mapsGridRuns.startedAt,
+    })
+    .from(mapsGridRuns)
+    .innerJoin(mapsGridCells, eq(mapsGridCells.runId, mapsGridRuns.id))
+    .where(
+      and(
+        inArray(mapsGridRuns.status, ["completed", "failed"]),
+        gte(mapsGridRuns.startedAt, input.since),
+        eq(mapsGridCells.taskStatus, "submitted"),
+      ),
+    )
+    .orderBy(asc(mapsGridRuns.startedAt))
+    .limit(input.limit);
+}
+
 /** Recent runs for a config, newest first — the run picker's read model. */
 async function getRunsForConfig(configId: string, limit: number) {
   return db
@@ -445,6 +477,7 @@ export const MapsGridRepository = {
   getRunById,
   getRunForProject,
   getActiveRunForConfig,
+  getRunsWithSubmittedCells,
   getRunsForConfig,
   getRunKeywords,
   reserveCells: reserveMapsGridCells,

@@ -7,7 +7,13 @@ type ProjectScopedArgs = {
   projectId: string;
 };
 
-async function requireProjectAccess(
+/**
+ * The org/project authorization gate every project-scoped tool goes through.
+ * Exported for the tools whose `projectId` is optional (get_monitoring_status
+ * sweeps the organization when it is omitted), which cannot use
+ * withMcpProjectAuth but must not re-implement the gate.
+ */
+export async function requireProjectAccess(
   toolContext: ToolContext,
   projectId: string,
 ) {

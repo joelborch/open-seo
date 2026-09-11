@@ -15,6 +15,8 @@ import { withPgClient } from "@/db";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
 import { runScheduledCrawls } from "@/server/features/audit-schedules/services/scheduledCrawls";
 import { runPendingProjections } from "@/server/features/bigquery-projection/services/BigqueryProjectionService";
+import { runScheduledGbpSnapshots } from "@/server/features/gbp/services/scheduledGbpSnapshots";
+import { runPendingRetrievals } from "@/server/features/monitoring/services/pendingRetrievals";
 import { runScheduledGridRuns } from "@/server/features/maps-grid/services/scheduledGridRuns";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
 
@@ -47,6 +49,17 @@ export async function runCronLoops(env: Env): Promise<void> {
     rankCheckError = err;
     console.error("[cron] Scheduled rank checks failed:", err);
   }
+  // Collect what finished runs already paid for and never picked up. Placed right
+  // after the rank loop so a run the tick just completed is a candidate on the next
+  // tick, and before the metered schedulers because it buys nothing and recovering
+  // charged results matters more than starting new work.
+  let retrievalError: unknown;
+  try {
+    await withPgClient(() => runPendingRetrievals());
+  } catch (err) {
+    retrievalError = err;
+    console.error("[cron] Pending result retrieval failed:", err);
+  }
   // Scheduled local-pack grids: metered like the rank checks, so they run after
   // them and behind their own cell budget.
   let gridSchedulerError: unknown;
@@ -55,6 +68,15 @@ export async function runCronLoops(env: Env): Promise<void> {
   } catch (err) {
     gridSchedulerError = err;
     console.error("[cron] Scheduled grid runs failed:", err);
+  }
+  // Scheduled Business Profile snapshots: two provider requests per location, so
+  // they run after the heavier metered loops and behind their own location budget.
+  let gbpSchedulerError: unknown;
+  try {
+    await withPgClient(() => runScheduledGbpSnapshots());
+  } catch (err) {
+    gbpSchedulerError = err;
+    console.error("[cron] Scheduled GBP snapshots failed:", err);
   }
   // BigQuery projection last: it reads runs the loops above just completed, and
   // it spends nothing of ours, so it gets whatever is left of the tick.
@@ -68,6 +90,8 @@ export async function runCronLoops(env: Env): Promise<void> {
   if (watchdogError) throw watchdogError;
   if (crawlSchedulerError) throw crawlSchedulerError;
   if (rankCheckError) throw rankCheckError;
+  if (retrievalError) throw retrievalError;
   if (gridSchedulerError) throw gridSchedulerError;
+  if (gbpSchedulerError) throw gbpSchedulerError;
   if (projectionError) throw projectionError;
 }

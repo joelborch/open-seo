@@ -25,6 +25,7 @@ const SOURCE_FAMILY = {
   audit_schedule_run: "crawl",
   rank_check_run: "rankings",
   maps_grid_run: "maps",
+  gbp_snapshot: "gbp",
 } as const;
 
 export type ProjectionRunKind = keyof typeof SOURCE_FAMILY;
@@ -34,7 +35,8 @@ export type ProjectionTableName =
   | "weekly_health_metrics"
   | "keyword_rankings"
   | "aio_tracking"
-  | "maps_rankings";
+  | "maps_rankings"
+  | "gbp_snapshots";
 
 /** Which client tables each run kind is expected to produce. */
 export const TABLES_BY_RUN_KIND: Record<
@@ -44,6 +46,7 @@ export const TABLES_BY_RUN_KIND: Record<
   audit_schedule_run: ["weekly_health_metrics"],
   rank_check_run: ["keyword_rankings", "aio_tracking"],
   maps_grid_run: ["maps_rankings"],
+  gbp_snapshot: ["gbp_snapshots"],
 };
 
 /** Competitors kept per maps cell, matching seo-yolo's `compact_maps`. */
@@ -311,6 +314,91 @@ export function buildMapsProjection(input: {
           request_id: cell.providerTaskId,
         };
       }),
+    },
+  };
+}
+
+// ============================================================================
+// gbp_snapshots -> gbp_snapshots (one row per location per day)
+// ============================================================================
+
+export type GbpSnapshotSource = {
+  snapshot: {
+    id: string;
+    runDate: string;
+    name: string | null;
+    placeId: string | null;
+    cid: string | null;
+    primaryCategory: string | null;
+    rating: number | null;
+    reviewsCount: number | null;
+    isClaimed: boolean | null;
+    address: string | null;
+    phone: string | null;
+    website: string | null;
+    photosCount: number | null;
+    providerTaskId: string | null;
+  };
+  /** seo-yolo's `office`; falls back to the location id when the row is gone. */
+  locationSlug: string;
+  locationName: string | null;
+  /** Review count at the location's previous snapshot, for the velocity delta. */
+  previousReviewsCount: number | null;
+  attributes: { key: string; value: string }[];
+};
+
+export function buildGbpProjection(input: {
+  source: GbpSnapshotSource;
+  pulledAt: string;
+}): ProjectionResult {
+  const { snapshot, previousReviewsCount, attributes } = input.source;
+  // A snapshot's run_date IS the observation date, so unlike the run kinds there
+  // is no completion timestamp to derive it from.
+  const reportDate = snapshot.runDate;
+  // Attribute groups as one object per snapshot ({ service_options: [...] }), so a
+  // query can address a group by name instead of unnesting rows.
+  const attributesByKey: Record<string, string[]> = {};
+  for (const attribute of attributes) {
+    (attributesByKey[attribute.key] ??= []).push(attribute.value);
+  }
+
+  return {
+    reportDate,
+    rowsByTable: {
+      gbp_snapshots: [
+        {
+          report_date: reportDate,
+          location_slug: input.source.locationSlug,
+          location_name: input.source.locationName,
+          // The name Google shows, which is not always the name we filed the
+          // location under — a rename is one of the things this table catches.
+          profile_name: snapshot.name,
+          place_id: snapshot.placeId,
+          cid: snapshot.cid,
+          primary_category: snapshot.primaryCategory,
+          rating: snapshot.rating,
+          reviews_count: snapshot.reviewsCount,
+          // Null rather than 0 when either side is unmeasured: "no previous
+          // snapshot" must not chart as "gained no reviews".
+          reviews_count_delta:
+            snapshot.reviewsCount !== null && previousReviewsCount !== null
+              ? snapshot.reviewsCount - previousReviewsCount
+              : null,
+          is_claimed: snapshot.isClaimed,
+          address: snapshot.address,
+          phone: snapshot.phone,
+          website: snapshot.website,
+          photos_count: snapshot.photosCount,
+          attributes: attributesByKey,
+          source: PROJECTION_SOURCE,
+          pulled_at: input.pulledAt,
+          run_id: snapshot.id,
+          // The closest analogue to seo-yolo's collection receipt id we hold: the
+          // profile read is a live call with no task id, so this is the queued
+          // reviews task the same capture posted.
+          request_id: snapshot.providerTaskId,
+        },
+      ],
     },
   };
 }

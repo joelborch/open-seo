@@ -24,6 +24,7 @@ import {
   getLatestRunForConfig,
   getRunById,
   getRunHistoryForConfig,
+  getRunsWithSubmittedTasks,
   tryCreateRun,
   updateRun,
 } from "./rankCheckRunQueries";
@@ -395,6 +396,7 @@ export const RankTrackingRepository = {
   getLatestRunForConfig,
   getRunHistoryForConfig,
   getActiveRunForConfig,
+  getRunsWithSubmittedTasks,
   insertSnapshots,
   getSnapshotsForRun,
   getSnapshotIdsForRun,

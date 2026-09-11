@@ -37,6 +37,7 @@ The project-context tools are free and shared with the app and other agents.
 - `get_google_business_questions`: Q&A on the profile (accepts `cid`/`placeId`).
 - `get_business_updates`: posts published on the profile, with dates.
 - `list_business_categories`: valid category slugs for `search_local_businesses`.
+- `get_monitoring_status` / `list_monitoring_runs` (`kind: "grid"`) / `get_maps_grid_run`: the project's stored Maps grid runs — visibility score, share of local voice, and a per-keyword ASCII heatmap of a scheduled 7x7 grid. Free, and a better first stop than `get_local_rank_grid` when a grid is already configured: the history shows movement, and no SERPs are bought.
 
 ## Workflow
 
