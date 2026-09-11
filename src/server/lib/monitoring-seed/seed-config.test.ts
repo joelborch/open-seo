@@ -1,158 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sortBy } from "remeda";
-import {
-  buildSeedingPlan,
-  discoverClients,
-  parseAhrefsClientsConfig,
-  parseClientOrder,
-  parseClientProfile,
-  parseGscExportDatasets,
-  parseMapsConfig,
-  parseProjectMapping,
-  DEFAULT_CLIENT_ORDER,
-  DEFAULT_GSC_EXPORT_DATASETS,
-} from "./seed-config";
-
-describe("seed-config pure parsing and schemas", () => {
-  describe("ProjectMappingSchema & parseProjectMapping", () => {
-    it("parses valid JSON object or string", () => {
-      const parsed = parseProjectMapping(
-        '{"airway": "proj-1", "actc": "proj-2"}',
-      );
-      expect(parsed).toEqual({ airway: "proj-1", actc: "proj-2" });
-
-      const fromObj = parseProjectMapping({ reddy: "proj-3" });
-      expect(fromObj).toEqual({ reddy: "proj-3" });
-    });
-
-    it("rejects empty keys or empty project IDs", () => {
-      expect(() => parseProjectMapping({ "": "proj-1" })).toThrow(
-        /Project mapping validation failed/,
-      );
-      expect(() => parseProjectMapping({ airway: "" })).toThrow(
-        /Project mapping validation failed/,
-      );
-    });
-
-    it("rejects malformed JSON string", () => {
-      expect(() => parseProjectMapping("{invalid-json}")).toThrow(
-        /Invalid JSON in project mapping string/,
-      );
-    });
-  });
-
-  describe("SeoYoloProfileSchema & parseClientProfile", () => {
-    it("validates compliant profile payload", () => {
-      const profile = parseClientProfile({
-        key: "airway",
-        display_name: "The Airway Dentists",
-        profile_slug: "theairwaydentists",
-        domain: "theairwaydentists.com",
-        dataset: "airway_marketing",
-        client_type: "local_multi_location",
-      });
-      expect(profile.key).toBe("airway");
-      expect(profile.profile_slug).toBe("theairwaydentists");
-      expect(profile.domain).toBe("theairwaydentists.com");
-    });
-
-    it("rejects profiles missing required fields", () => {
-      expect(() =>
-        parseClientProfile({
-          key: "airway",
-          display_name: "The Airway Dentists",
-          // missing profile_slug and domain
-        }),
-      ).toThrow(/Client profile validation failed/);
-    });
-  });
-
-  describe("MapsConfigSchema & parseMapsConfig", () => {
-    it("parses valid maps config and applies defaults", () => {
-      const config = parseMapsConfig({
-        client: "Test Client",
-        domain: "test.com",
-        keywords: ["keyword 1", "keyword 2"],
-        locations: [
-          {
-            name: "Office 1",
-            slug: "office-1",
-            lat: 30.123,
-            lng: -95.456,
-            match_terms: ["office one"],
-          },
-        ],
-      });
-
-      expect(config.grid_size).toBe(7);
-      expect(config.radius_miles).toBe(5);
-      expect(config.zoom).toBe("13z");
-      expect(config.device).toBe("mobile");
-      expect(config.language_code).toBe("en");
-      expect(config.locations).toHaveLength(1);
-      expect(config.locations[0].slug).toBe("office-1");
-      expect(config.locations[0].match_terms).toEqual(["office one"]);
-    });
-
-    it("rejects maps config with invalid device", () => {
-      expect(() =>
-        parseMapsConfig({
-          device: "tablet", // only "mobile" | "desktop" allowed
-          locations: [],
-        }),
-      ).toThrow(/Maps config validation failed/);
-    });
-
-    it("rejects locations missing coordinates or slug", () => {
-      expect(() =>
-        parseMapsConfig({
-          locations: [
-            {
-              name: "Missing coords",
-              slug: "missing",
-            },
-          ],
-        }),
-      ).toThrow(/Maps config validation failed/);
-    });
-  });
-
-  describe("AhrefsClientsConfigSchema & parseAhrefsClientsConfig", () => {
-    it("parses valid clients list", () => {
-      const parsed = parseAhrefsClientsConfig({
-        clients: [
-          {
-            slug: "actchealth",
-            maps_config: "/path/to/maps.json",
-          },
-        ],
-      });
-      expect(parsed.clients).toHaveLength(1);
-      expect(parsed.clients[0].slug).toBe("actchealth");
-      expect(parsed.clients[0].maps_config).toBe("/path/to/maps.json");
-    });
-  });
-
-  describe("Python extractors", () => {
-    it("parseClientOrder extracts tuple items or falls back to default", () => {
-      const py = `CLIENT_ORDER = (\n    "client_a",\n    "client_b",\n)`;
-      expect(parseClientOrder(py)).toEqual(["client_a", "client_b"]);
-      expect(parseClientOrder("NO_ORDER_HERE = 123")).toEqual(
-        DEFAULT_CLIENT_ORDER,
-      );
-    });
-
-    it("parseGscExportDatasets extracts dict entries or falls back to default", () => {
-      const py = `GSC_EXPORT_DATASETS: dict[str, str] = {\n    "custom_client": "searchconsole_custom",\n}`;
-      expect(parseGscExportDatasets(py)).toEqual({
-        custom_client: "searchconsole_custom",
-      });
-      expect(parseGscExportDatasets("INVALID")).toEqual(
-        DEFAULT_GSC_EXPORT_DATASETS,
-      );
-    });
-  });
-});
+import { buildSeedingPlan, discoverClients } from "./seed-config";
+import { AUDIT_SCHEDULE_SEED_DEFAULTS } from "./seed-schemas";
 
 describe("seed-config live discovery & plan generation", () => {
   it("discovers all 7 live clients from the workspace", () => {
@@ -355,6 +204,107 @@ describe("seed-config live discovery & plan generation", () => {
           expect(plan.maps).toBeUndefined();
         }
       }
+    });
+
+    it("gives every project the same audit schedule, on the shared grid", () => {
+      const [plan] = buildSeedingPlan(
+        { airway: "proj-airway-3" },
+        { discoveredClients: clients },
+      );
+      const schedule = plan.auditSchedule;
+
+      expect(schedule).toMatchObject({
+        startUrl: "https://theairwaydentists.com/",
+        isActive: true,
+        quickEnabled: true,
+        quickMaxPages: 300,
+        quickHourUtc: 9,
+        deepEnabled: true,
+        deepMaxPages: 5000,
+        deepDowUtc: 1,
+        deepHourUtc: 10,
+        deepLighthouse: true,
+      });
+
+      const nextQuick = new Date(schedule.nextQuickAt);
+      expect(nextQuick.getUTCHours()).toBe(
+        AUDIT_SCHEDULE_SEED_DEFAULTS.quickHourUtc,
+      );
+      expect(nextQuick.getTime()).toBeGreaterThan(Date.now());
+
+      const nextDeep = new Date(schedule.nextDeepAt);
+      expect(nextDeep.getUTCDay()).toBe(
+        AUDIT_SCHEDULE_SEED_DEFAULTS.deepDowUtc,
+      );
+      expect(nextDeep.getUTCHours()).toBe(
+        AUDIT_SCHEDULE_SEED_DEFAULTS.deepHourUtc,
+      );
+      expect(nextDeep.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it("applies global page overrides, with the per-client map winning", () => {
+      const plans = buildSeedingPlan(
+        { airway: "proj-airway-4", newmouth: "proj-nm-2" },
+        {
+          discoveredClients: clients,
+          auditPageLimits: { quickMaxPages: 50, deepMaxPages: 500 },
+          auditPageLimitsByClient: { airway: { deepMaxPages: 9000 } },
+        },
+      );
+
+      expect(plans[0].auditSchedule).toMatchObject({
+        quickMaxPages: 50,
+        deepMaxPages: 9000,
+      });
+      expect(plans[1].auditSchedule).toMatchObject({
+        quickMaxPages: 50,
+        deepMaxPages: 500,
+      });
+    });
+
+    it("tracks locals in their rankings location and publishers nationally", () => {
+      const plans = buildSeedingPlan(
+        { airway: "proj-airway-5", newmouth: "proj-nm-3" },
+        {
+          discoveredClients: clients,
+          publisherKeywords: { newmouth: ["veneers", "braces"] },
+        },
+      );
+
+      expect(plans[0].rankTracking).toMatchObject({
+        domain: "theairwaydentists.com",
+        locationName: "Houston,Texas,United States",
+        devices: "mobile",
+        serpDepth: 20,
+        scheduleInterval: "weekly",
+        isActive: true,
+        trackCompetitors: true,
+        trackAiOverview: true,
+      });
+      expect(plans[0].rankTracking.keywords).toEqual([
+        "airway dentist",
+        "dentist near me",
+        "invisalign near me",
+      ]);
+
+      expect(plans[1].rankTracking).toMatchObject({
+        domain: "newmouth.com",
+        locationName: null,
+        locationCode: 2840,
+        devices: "desktop",
+        keywords: ["veneers", "braces"],
+      });
+      expect(
+        new Date(plans[1].rankTracking.nextCheckAt).getTime(),
+      ).toBeGreaterThan(Date.now());
+    });
+
+    it("leaves a publisher with no keywords file entry empty", () => {
+      const [plan] = buildSeedingPlan(
+        { knowyourdna: "proj-kyd-2" },
+        { discoveredClients: clients },
+      );
+      expect(plan.rankTracking.keywords).toEqual([]);
     });
 
     it("throws clear error for unknown client", () => {

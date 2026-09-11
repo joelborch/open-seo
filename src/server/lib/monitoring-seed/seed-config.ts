@@ -1,173 +1,58 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { sortBy } from "remeda";
+import {
+  computeNextQuickAt,
+  computeNextDeepAt,
+} from "@/shared/audit-schedules";
+import { computeNextCheckAt } from "@/shared/rank-tracking";
 import { CLIENT_DATASETS } from "../bigquery/specs";
 import {
+  normalizeTrackedKeywords,
+  parseAhrefsClientsConfig,
+  parseAioKeywordsConfig,
+  parseClientOrder,
+  parseClientProfile,
+  parseMapsConfig,
+} from "./seed-parsers";
+import {
+  AUDIT_SCHEDULE_SEED_DEFAULTS,
   DEFAULT_CLIENT_ORDER,
   DEFAULT_GSC_EXPORT_DATASETS,
   DEFAULT_PATHS,
-  type AhrefsClientsConfig,
-  AhrefsClientsConfigSchema,
+  RANK_TRACKING_SEED_DEFAULTS,
+  type AuditSchedulePlan,
   type BigqueryTargetPlan,
   type ClientSeedPlan,
   type DiscoveredClient,
   type LocationSeedPlan,
   type MapsConfig,
-  MapsConfigSchema,
   type ProjectMapping,
-  ProjectMappingSchema,
+  type PublisherKeywordsFile,
+  type RankTrackingSeedPlan,
   type SeoYoloProfile,
-  SeoYoloProfileSchema,
 } from "./seed-schemas";
 
+export * from "./seed-parsers";
 export * from "./seed-schemas";
 
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  if (typeof err === "string") {
-    return err;
-  }
-  return "Unknown error";
-}
-
-export function parseProjectMapping(input: unknown): ProjectMapping {
-  let parsed = input;
-  if (typeof input === "string") {
-    const trimmed = input.trim();
-    if (trimmed.startsWith("{")) {
-      try {
-        parsed = JSON.parse(trimmed);
-      } catch (err) {
-        throw new Error(
-          `Invalid JSON in project mapping string: ${getErrorMessage(err)}`,
-          { cause: err },
-        );
-      }
-    } else {
-      if (!existsSync(trimmed)) {
-        throw new Error(`Mapping file does not exist: ${trimmed}`);
-      }
-      try {
-        const fileContent = readFileSync(trimmed, "utf8");
-        parsed = JSON.parse(fileContent);
-      } catch (err) {
-        throw new Error(
-          `Failed to read or parse mapping file "${trimmed}": ${getErrorMessage(err)}`,
-          { cause: err },
-        );
-      }
-    }
-  }
-
-  const result = ProjectMappingSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      `Project mapping validation failed: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-    );
-  }
-  return result.data;
-}
-
-export function parseClientProfile(input: unknown): SeoYoloProfile {
-  let parsed = input;
-  if (typeof input === "string") {
-    try {
-      parsed = JSON.parse(input);
-    } catch (err) {
-      throw new Error(
-        `Failed to parse profile JSON string: ${getErrorMessage(err)}`,
-        { cause: err },
-      );
-    }
-  }
-  const result = SeoYoloProfileSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      `Client profile validation failed: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-    );
-  }
-  return result.data;
-}
-
-export function parseAhrefsClientsConfig(input: unknown): AhrefsClientsConfig {
-  let parsed = input;
-  if (typeof input === "string") {
-    try {
-      parsed = JSON.parse(input);
-    } catch (err) {
-      throw new Error(
-        `Failed to parse ahrefs clients JSON string: ${getErrorMessage(err)}`,
-        { cause: err },
-      );
-    }
-  }
-  const result = AhrefsClientsConfigSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      `Ahrefs clients config validation failed: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-    );
-  }
-  return result.data;
-}
-
-export function parseMapsConfig(input: unknown): MapsConfig {
-  let parsed = input;
-  if (typeof input === "string") {
-    try {
-      parsed = JSON.parse(input);
-    } catch (err) {
-      throw new Error(
-        `Failed to parse maps config JSON string: ${getErrorMessage(err)}`,
-        { cause: err },
-      );
-    }
-  }
-  const result = MapsConfigSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      `Maps config validation failed: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-    );
-  }
-  return result.data;
-}
-
-export function parseClientOrder(pythonSource: string): string[] {
-  const match = pythonSource.match(/CLIENT_ORDER\s*=\s*\(([^)]+)\)/s);
-  if (!match) return [...DEFAULT_CLIENT_ORDER];
-  const body = match[1];
-  const items: string[] = [];
-  const regex = /["']([^"']+)["']/g;
-  let m: RegExpExecArray | null = null;
-  while ((m = regex.exec(body)) !== null) {
-    items.push(m[1]);
-  }
-  return items.length > 0 ? items : [...DEFAULT_CLIENT_ORDER];
-}
-
-export function parseGscExportDatasets(
-  pythonSource: string,
-): Record<string, string> {
-  const match = pythonSource.match(
-    /GSC_EXPORT_DATASETS\s*:\s*(?:dict\[[^\]]+\]\s*)?=\s*\{([^}]+)\}/s,
+/**
+ * A local client runs a geo panel: seo-yolo gates that on `local_visibility` in
+ * the profile topics, and a maps config is the same signal from the other side.
+ */
+function isLocalClient(
+  profile: SeoYoloProfile,
+  mapsConfig: MapsConfig | null,
+): boolean {
+  return (
+    (profile.topics ?? []).includes("local_visibility") || Boolean(mapsConfig)
   );
-  if (!match) return { ...DEFAULT_GSC_EXPORT_DATASETS };
-  const body = match[1];
-  const result: Record<string, string> = {};
-  const lineRegex = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
-  let m: RegExpExecArray | null = null;
-  while ((m = lineRegex.exec(body)) !== null) {
-    result[m[1]] = m[2];
-  }
-  return Object.keys(result).length > 0
-    ? result
-    : { ...DEFAULT_GSC_EXPORT_DATASETS };
 }
 
 type DiscoverClientsOptions = {
   seoYoloRoot?: string;
   ahrefsClientsConfigPath?: string;
+  aioKeywordsConfigPath?: string;
   readFileFn?: (path: string) => string;
   fileExistsFn?: (path: string) => boolean;
 };
@@ -193,6 +78,7 @@ export function discoverClients(
   }
 
   const mapsConfigBySlug = new Map<string, string>();
+  const rankKeywordsBySlug = new Map<string, string[]>();
   if (existsFn(ahrefsClientsConfigPath)) {
     try {
       const raw = readFn(ahrefsClientsConfigPath);
@@ -201,9 +87,31 @@ export function discoverClients(
         if (client.maps_config) {
           mapsConfigBySlug.set(client.slug, client.maps_config);
         }
+        if (client.weekly_rank_keywords) {
+          rankKeywordsBySlug.set(client.slug, client.weekly_rank_keywords);
+        }
       }
     } catch {
       // Continue without ahrefs maps configs if absent
+    }
+  }
+
+  // seo-yolo's rankings panel posts `clients[slug].default_location` from
+  // aio_keywords.json as location_name, so the seeded local configs reuse that
+  // exact string rather than rebuilding it from an office address.
+  const rankLocationBySlug = new Map<string, string>();
+  const aioKeywordsConfigPath =
+    options.aioKeywordsConfigPath ?? DEFAULT_PATHS.aioKeywordsConfig;
+  if (existsFn(aioKeywordsConfigPath)) {
+    try {
+      const parsed = parseAioKeywordsConfig(readFn(aioKeywordsConfigPath));
+      for (const [slug, panel] of Object.entries(parsed.clients)) {
+        if (panel.default_location) {
+          rankLocationBySlug.set(slug, panel.default_location);
+        }
+      }
+    } catch {
+      // Continue without rankings locations if the config is absent
     }
   }
 
@@ -245,17 +153,102 @@ export function discoverClients(
       mapsConfig,
       bigqueryDataset,
       gscExportDataset,
+      isLocal: isLocalClient(profile, mapsConfig),
+      weeklyRankKeywords: rankKeywordsBySlug.get(slug) ?? [],
+      rankLocationName: rankLocationBySlug.get(slug) ?? null,
     });
   }
 
   return discovered;
 }
 
+type AuditSchedulePageOverrides = {
+  quickMaxPages?: number;
+  deepMaxPages?: number;
+};
+
 type BuildSeedingPlanOptions = {
   discoveredClients?: DiscoveredClient[];
   clientDatasets?: Record<string, string>;
   gscExportDatasets?: Record<string, string>;
+  /** `--publisher-keywords`: rank keywords for clients with no local panel. */
+  publisherKeywords?: PublisherKeywordsFile;
+  /** `--quick-pages` / `--deep-pages`, applied to every client. */
+  auditPageLimits?: AuditSchedulePageOverrides;
+  /** Per-client crawl-size overrides, keyed by client key or profile slug. */
+  auditPageLimitsByClient?: Record<string, AuditSchedulePageOverrides>;
 };
+
+function buildAuditSchedulePlan(
+  client: DiscoveredClient,
+  options: BuildSeedingPlanOptions,
+): AuditSchedulePlan {
+  const perClient =
+    options.auditPageLimitsByClient?.[client.key] ??
+    options.auditPageLimitsByClient?.[client.slug] ??
+    {};
+  const defaults = AUDIT_SCHEDULE_SEED_DEFAULTS;
+  return {
+    startUrl: `https://${client.domain}/`,
+    isActive: defaults.isActive,
+    quickEnabled: defaults.quickEnabled,
+    quickMaxPages:
+      perClient.quickMaxPages ??
+      options.auditPageLimits?.quickMaxPages ??
+      defaults.quickMaxPages,
+    quickHourUtc: defaults.quickHourUtc,
+    nextQuickAt: computeNextQuickAt(defaults.quickHourUtc),
+    deepEnabled: defaults.deepEnabled,
+    deepMaxPages:
+      perClient.deepMaxPages ??
+      options.auditPageLimits?.deepMaxPages ??
+      defaults.deepMaxPages,
+    deepDowUtc: defaults.deepDowUtc,
+    deepHourUtc: defaults.deepHourUtc,
+    deepLighthouse: defaults.deepLighthouse,
+    nextDeepAt: computeNextDeepAt(defaults.deepDowUtc, defaults.deepHourUtc),
+  };
+}
+
+/**
+ * Locals track their seo-yolo rankings panel on mobile in the panel's own
+ * location; publishers track a national US desktop SERP with a hand-supplied
+ * keyword list. A local with no rankings location would otherwise be seeded as
+ * a national config, which is a different row under the schema's partial
+ * uniques, so it fails loudly instead.
+ */
+function buildRankTrackingPlan(
+  client: DiscoveredClient,
+  options: BuildSeedingPlanOptions,
+): RankTrackingSeedPlan {
+  const defaults = RANK_TRACKING_SEED_DEFAULTS;
+  const keywords = client.isLocal
+    ? client.weeklyRankKeywords
+    : (options.publisherKeywords?.[client.key] ??
+      options.publisherKeywords?.[client.slug] ??
+      []);
+
+  if (client.isLocal && !client.rankLocationName) {
+    throw new Error(
+      `Local client "${client.key}" has no rankings location_name (clients.${client.slug}.default_location in ${DEFAULT_PATHS.aioKeywordsConfig}).`,
+    );
+  }
+
+  return {
+    domain: client.domain,
+    locationCode: defaults.locationCode,
+    languageCode: defaults.languageCode,
+    locationName: client.isLocal ? client.rankLocationName : null,
+    devices: client.isLocal ? "mobile" : "desktop",
+    serpDepth: defaults.serpDepth,
+    scheduleInterval: defaults.scheduleInterval,
+    trackCompetitors: defaults.trackCompetitors,
+    trackAiOverview: defaults.trackAiOverview,
+    isActive: defaults.isActive,
+    nextCheckAt: computeNextCheckAt(defaults.scheduleInterval),
+    keywords: normalizeTrackedKeywords(keywords),
+  };
+}
 
 export function buildSeedingPlan(
   mapping: ProjectMapping,
@@ -356,6 +349,8 @@ export function buildSeedingPlan(
       projectId,
       profile: client.profile,
       bigqueryTarget,
+      auditSchedule: buildAuditSchedulePlan(client, options),
+      rankTracking: buildRankTrackingPlan(client, options),
       maps,
     });
   }
