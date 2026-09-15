@@ -56,6 +56,7 @@ function profileResponse(taskOverrides: Record<string, unknown> = {}) {
     status_code: 20000,
     tasks: [
       {
+        id: "profile-task-abc",
         status_code: 20000,
         path: ["v3", "business_data", "google", "my_business_info", "live"],
         cost: 0.002,
@@ -125,7 +126,12 @@ describe("fetchGbpProfile", () => {
         languageCode: "en",
       });
 
-      expect(data).toEqual({ profile: null, costUsd: 0.002 });
+      expect(data).toEqual({
+        profile: null,
+        costUsd: 0.002,
+        profileTaskId: "profile-task-abc",
+        profileStatusCode: statusCode,
+      });
     },
   );
 });

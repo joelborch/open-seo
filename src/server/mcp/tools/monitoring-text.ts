@@ -122,6 +122,19 @@ export function monitoringStatusLines(
         })),
   );
 
+  lines.push("- GBP snapshots:");
+  for (const location of status.gbp) {
+    const snapshot = location.snapshot;
+    lines.push(
+      `  - ${location.name}: ${
+        snapshot
+          ? `${snapshot.runDate}, ${snapshot.profileFound ? "profile found" : "empty profile"}, ${spend(snapshot.costMicros, null)}, reviews ${snapshot.reviewsStatus}`
+          : "no capture"
+      }; next ${location.nextRunAt ?? "unset"}; skip ${location.lastSkipReason ?? "none"}`,
+    );
+  }
+  if (status.gbp.length === 0) lines.push("  - no monitored locations");
+
   lines.push("- BigQuery projections:");
   lines.push(
     ...(status.projections.length === 0

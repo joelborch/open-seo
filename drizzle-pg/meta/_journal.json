@@ -204,6 +204,13 @@
       "when": 1789143319596,
       "tag": "0028_worried_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789482666074,
+      "tag": "0029_narrow_spirit",
+      "breakpoints": true
     }
   ]
 }

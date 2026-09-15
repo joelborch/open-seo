@@ -632,6 +632,9 @@ export const gbpSnapshots = sqliteTable(
     website: text("website"),
     photosCount: integer("photos_count"),
     costMicros: integer("cost_micros"),
+    queryIdentity: text("query_identity"),
+    profileTaskId: text("profile_task_id"),
+    profileStatusCode: integer("profile_status_code"),
     providerTaskId: text("provider_task_id"),
     reviewsCollectedAt: text("reviews_collected_at"),
     createdAt: text("created_at")

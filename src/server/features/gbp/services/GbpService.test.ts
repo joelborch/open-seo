@@ -97,6 +97,25 @@ describe("captureGbpSnapshot", () => {
     });
   });
 
+  it("refuses an area-name lookup before any provider spend", async () => {
+    mocks.getCaptureTarget.mockResolvedValue({
+      locationId: "loc_1",
+      projectId: "project_1",
+      name: "Cypress",
+      lat: 29.7,
+      lng: -95.3,
+      radiusMiles: 5,
+      placeId: null,
+      lastCid: null,
+    });
+    await expect(captureGbpSnapshot(input)).rejects.toThrow(
+      "verified Place ID",
+    );
+    expect(mocks.gbpProfile).not.toHaveBeenCalled();
+    expect(mocks.gbpReviewsTaskPost).not.toHaveBeenCalled();
+    expect(mocks.deleteSnapshot).toHaveBeenCalledWith(expect.any(String));
+  });
+
   it("spends nothing on a second capture the same day and collects the queued reviews", async () => {
     mocks.claimSnapshot.mockResolvedValue(false);
     mocks.getSnapshotForDate.mockResolvedValue({

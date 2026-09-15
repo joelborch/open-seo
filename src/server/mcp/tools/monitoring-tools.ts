@@ -70,6 +70,7 @@ export const getMonitoringStatusTool = {
               crawls: z.array(looseObjectOutputSchema),
               rank: z.array(rankTrackerRunsOutputSchema),
               grids: z.array(gridConfigRunsOutputSchema),
+              gbp: z.array(looseObjectOutputSchema),
               projections: z.array(projectionLedgerOutputSchema),
             })
             .passthrough(),

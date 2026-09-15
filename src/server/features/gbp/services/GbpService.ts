@@ -77,8 +77,8 @@ export async function collectSnapshotReviews(input: {
 /**
  * The identifier the profile lookup is pinned to, most precise first. A cid a
  * previous snapshot resolved beats the location's `place_id` because Google keys
- * its own profile on it; the business name is the last resort and is only
- * trustworthy alongside the coordinate.
+ * its own profile on it. Office labels are not business identities: never buy
+ * a lookup for a city or neighborhood when neither precise identifier exists.
  */
 function profileKeyword(target: {
   lastCid: string | null;
@@ -87,7 +87,10 @@ function profileKeyword(target: {
 }): string {
   if (target.lastCid) return `cid:${target.lastCid}`;
   if (target.placeId) return `place_id:${target.placeId}`;
-  return target.name;
+  throw new AppError(
+    "VALIDATION_ERROR",
+    "GBP capture requires a verified Place ID or previously resolved CID",
+  );
 }
 
 /**
@@ -149,14 +152,19 @@ export async function captureGbpSnapshot(input: {
       target.lng,
       target.radiusMiles,
     );
-    const { profile, costUsd } = await client.business.gbpProfile({
-      keyword: profileKeyword(target),
-      locationCoordinate,
-      languageCode: PROFILE_LANGUAGE_CODE,
-    });
+    const queryIdentity = profileKeyword(target);
+    const { profile, costUsd, profileTaskId, profileStatusCode } =
+      await client.business.gbpProfile({
+        keyword: queryIdentity,
+        locationCoordinate,
+        languageCode: PROFILE_LANGUAGE_CODE,
+      });
 
     let costMicros = usdToMicros(costUsd);
     await GbpRepository.updateSnapshot(snapshotId, {
+      queryIdentity,
+      profileTaskId,
+      profileStatusCode,
       placeId: profile?.placeId ?? target.placeId,
       cid: profile?.cid ?? null,
       name: profile?.name ?? null,

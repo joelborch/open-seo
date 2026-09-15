@@ -14,6 +14,7 @@ import { reverse } from "remeda";
 import { z } from "zod";
 import { AuditScheduleService } from "@/server/features/audit-schedules/services/AuditScheduleService";
 import { BigqueryProjectionRepository } from "@/server/features/bigquery-projection/repositories/BigqueryProjectionRepository";
+import { GbpRepository } from "@/server/features/gbp/repositories/GbpRepository";
 import { MapsGridRepository } from "@/server/features/maps-grid/repositories/MapsGridRepository";
 import { MapsGridService } from "@/server/features/maps-grid/services/MapsGridService";
 import { computeRunRollups } from "@/server/features/maps-grid/services/mapsGridRollups";
@@ -328,23 +329,61 @@ export type MonitoringProjectStatus = {
   crawls: CrawlRunSummary[];
   rank: RankTrackerRuns[];
   grids: GridConfigRuns[];
+  gbp: Awaited<ReturnType<typeof gbpStatusForProject>>;
   projections: ProjectionLedgerEntry[];
 };
+
+async function gbpStatusForProject(projectId: string) {
+  const [locations, snapshots] = await Promise.all([
+    GbpRepository.getLocationsWithSchedules(projectId),
+    GbpRepository.getRecentSnapshots(projectId),
+  ]);
+  return locations.map((location) => {
+    const latest = snapshots.find(
+      (row) => row.locationId === location.locationId,
+    );
+    return {
+      ...location,
+      snapshot: latest
+        ? {
+            runId: latest.id,
+            runDate: latest.runDate,
+            profileName: latest.name,
+            profileFound: latest.name !== null,
+            costMicros: latest.costMicros,
+            queryIdentity: latest.queryIdentity,
+            profileTaskId: latest.profileTaskId,
+            profileStatusCode: latest.profileStatusCode,
+            providerTaskId: latest.providerTaskId,
+            reviewsStatus: latest.reviewsCollectedAt
+              ? "collected"
+              : latest.providerTaskId
+                ? "pending"
+                : "not_submitted",
+          }
+        : null,
+    };
+  });
+}
 
 /** Latest run of every monitoring loop for one project, plus its ledger rows. */
 export async function monitoringStatusForProject(project: {
   id: string;
   name: string;
 }): Promise<MonitoringProjectStatus> {
-  const [crawls, rank, grids] = await Promise.all([
+  const [crawls, rank, grids, gbp] = await Promise.all([
     latestCrawlRuns(project.id),
     rankRunsForProject({ projectId: project.id, limit: 1 }),
     gridRunsForProject({ projectId: project.id, limit: 1 }),
+    gbpStatusForProject(project.id),
   ]);
   const runIds = [
     ...crawls.map((run) => run.runId),
     ...rank.flatMap((tracker) => tracker.runs.map((run) => run.runId)),
     ...grids.flatMap((config) => config.runs.map((run) => run.runId)),
+    ...gbp.flatMap((location) =>
+      location.snapshot ? [location.snapshot.runId] : [],
+    ),
   ];
   return {
     projectId: project.id,
@@ -352,6 +391,7 @@ export async function monitoringStatusForProject(project: {
     crawls,
     rank,
     grids,
+    gbp,
     projections: await projectionLedgerForRuns({
       projectId: project.id,
       runIds,

@@ -22,6 +22,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db } from "@/db";
+import { runBatch } from "@/db/runBatch";
 import {
   gbpSchedules,
   gbpSnapshotAttributes,
@@ -197,21 +198,22 @@ async function replaceReviews(input: {
   reviews: Array<Omit<GbpReviewRow, "snapshotId">>;
   collectedAt: string;
 }): Promise<void> {
-  await db
-    .delete(gbpSnapshotReviews)
-    .where(eq(gbpSnapshotReviews.snapshotId, input.snapshotId));
-  if (input.reviews.length > 0) {
-    await db.insert(gbpSnapshotReviews).values(
-      input.reviews.map((review) => ({
-        ...review,
-        snapshotId: input.snapshotId,
-      })),
-    );
-  }
-  await db
-    .update(gbpSnapshots)
-    .set({ reviewsCollectedAt: input.collectedAt })
-    .where(eq(gbpSnapshots.id, input.snapshotId));
+  // One review per statement stays below D1's 100-parameter limit. Keep the
+  // replacement and completion marker atomic so a failed insert loses nothing.
+  await runBatch((tx) => [
+    tx
+      .delete(gbpSnapshotReviews)
+      .where(eq(gbpSnapshotReviews.snapshotId, input.snapshotId)),
+    ...input.reviews.map((review) =>
+      tx
+        .insert(gbpSnapshotReviews)
+        .values({ ...review, snapshotId: input.snapshotId }),
+    ),
+    tx
+      .update(gbpSnapshots)
+      .set({ reviewsCollectedAt: input.collectedAt })
+      .where(eq(gbpSnapshots.id, input.snapshotId)),
+  ]);
 }
 
 /**
@@ -446,6 +448,9 @@ async function getRecentSnapshots(projectId: string) {
       website: gbpSnapshots.website,
       photosCount: gbpSnapshots.photosCount,
       costMicros: gbpSnapshots.costMicros,
+      queryIdentity: gbpSnapshots.queryIdentity,
+      profileTaskId: gbpSnapshots.profileTaskId,
+      profileStatusCode: gbpSnapshots.profileStatusCode,
       reviewsCollectedAt: gbpSnapshots.reviewsCollectedAt,
       providerTaskId: gbpSnapshots.providerTaskId,
     })

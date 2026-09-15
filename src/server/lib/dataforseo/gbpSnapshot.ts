@@ -144,6 +144,8 @@ type GbpProfile = {
 };
 
 type GbpProfileResult = {
+  profileTaskId: string | null;
+  profileStatusCode: number | null;
   /** Null when DataForSEO charged for a lookup that matched no profile. */
   profile: GbpProfile | null;
   /** What this call cost, in USD, for the snapshot's own cost ledger. */
@@ -211,7 +213,13 @@ export async function fetchGbpProfile(
   ) {
     const billing = buildTaskBilling(billedEmpty);
     return {
-      data: { profile: null, costUsd: billing.costUsd },
+      data: {
+        profile: null,
+        costUsd: billing.costUsd,
+        profileTaskId:
+          typeof billedEmpty.id === "string" ? billedEmpty.id : null,
+        profileStatusCode: billedEmpty.status_code ?? null,
+      },
       billing,
     };
   }
@@ -223,6 +231,8 @@ export async function fetchGbpProfile(
     data: {
       profile: isRecord(item) ? toProfile(item) : null,
       costUsd: billing.costUsd,
+      profileTaskId: typeof task.id === "string" ? task.id : null,
+      profileStatusCode: task.status_code ?? null,
     },
     billing,
   };

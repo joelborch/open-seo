@@ -24,9 +24,17 @@ const mocks = vi.hoisted(() => ({
   getGridCellsForRuns: vi.fn(),
   getGridRuns: vi.fn(),
   getLedgerForProject: vi.fn(),
+  getGbpLocations: vi.fn(),
+  getGbpSnapshots: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
+vi.mock("@/server/features/gbp/repositories/GbpRepository", () => ({
+  GbpRepository: {
+    getLocationsWithSchedules: mocks.getGbpLocations,
+    getRecentSnapshots: mocks.getGbpSnapshots,
+  },
+}));
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
   ProjectService: {
     getProjectForOrganization: mocks.getProjectForOrganization,
@@ -75,6 +83,8 @@ const toolContext = makeToolContext();
 
 describe("monitoring status and history MCP tools", () => {
   beforeEach(() => {
+    mocks.getGbpLocations.mockResolvedValue([]);
+    mocks.getGbpSnapshots.mockResolvedValue([]);
     mocks.getProjectForOrganization.mockResolvedValue({
       id: projectId,
       name: "Example Dental",
@@ -148,6 +158,52 @@ describe("monitoring status and history MCP tools", () => {
       "rank_positions (client_ds) for rank_check_run rank-run-1: error: permission denied",
     );
     expect(out).not.toContain("grid-run-0");
+    expect(
+      await outputSchemaError(
+        getMonitoringStatusTool,
+        result.structuredContent,
+      ),
+    ).toBe("valid");
+  });
+
+  it("includes empty GBP captures and their failed warehouse projection", async () => {
+    mocks.getGbpLocations.mockResolvedValue([
+      {
+        locationId: "office-1",
+        name: "Cypress",
+        nextRunAt: "2026-09-21T07:30:00Z",
+        lastSkipReason: null,
+      },
+    ]);
+    mocks.getGbpSnapshots.mockResolvedValue([
+      {
+        id: "gbp-1",
+        locationId: "office-1",
+        runDate: "2026-09-14",
+        name: null,
+        costMicros: 5400,
+        providerTaskId: null,
+        reviewsCollectedAt: null,
+      },
+    ]);
+    mocks.getLedgerForProject.mockResolvedValue([
+      {
+        runKind: "gbp_snapshot",
+        runId: "gbp-1",
+        tableName: "gbp_snapshots",
+        dataset: "client_ds",
+        rows: 0,
+        projectedAt: "2026-09-15T00:00:00Z",
+        error: "table missing",
+      },
+    ]);
+    const result = await getMonitoringStatusTool.handler(
+      { projectId },
+      toolContext,
+    );
+    expect(textContent(result)).toContain("empty profile");
+    expect(textContent(result)).toContain("reviews not_submitted");
+    expect(textContent(result)).toContain("error: table missing");
     expect(
       await outputSchemaError(
         getMonitoringStatusTool,
