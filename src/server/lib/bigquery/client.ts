@@ -172,11 +172,34 @@ export async function mergeRows(input: {
 
   // Sequential on purpose: concurrent MERGEs against one table serialize in
   // BigQuery anyway, and overlapping ones fail with a conflict.
-  for (const rows of chunks) {
-    const result = await runQuery({
-      sql,
-      params: { rows: { type: "ARRAY<STRUCT>", spec: input.spec, rows } },
-    });
+  for (const [index, rows] of chunks.entries()) {
+    const merge = () =>
+      runQuery({
+        sql,
+        params: { rows: { type: "ARRAY<STRUCT>", spec: input.spec, rows } },
+      });
+    let result: BqQueryResult;
+    try {
+      result = await merge();
+    } catch (error) {
+      // A brand-new dataset or table spec has no table yet. The spec carries
+      // the full schema, so create it once and retry; anything else (a missing
+      // dataset, a schema mismatch, a permission gap) still surfaces as the
+      // error, because papering over those would hide real drift.
+      if (
+        index !== 0 ||
+        !isMissingTableError(error, projectId, input.dataset, input.spec)
+      ) {
+        throw error;
+      }
+      console.warn(
+        `[bigquery] table ${projectId}.${input.dataset}.${input.spec.table} does not exist; creating it from its spec`,
+      );
+      await runQuery({
+        sql: buildCreateTableSql(projectId, input.dataset, input.spec),
+      });
+      result = await merge();
+    }
     affectedRows += result.numDmlAffectedRows ?? 0;
   }
 
@@ -185,6 +208,47 @@ export async function mergeRows(input: {
     sourceRows: sourceRows.length,
     statements: chunks.length,
   };
+}
+
+/**
+ * The DDL for a projection table, straight from its spec. `IF NOT EXISTS` makes
+ * it safe to race with another tick or a hand-made table.
+ */
+export function buildCreateTableSql(
+  projectId: string,
+  dataset: string,
+  spec: BqTableSpec,
+): string {
+  assertProjectId(projectId);
+  assertIdentifier(dataset, "dataset");
+  assertIdentifier(spec.table, "table");
+
+  const columns = spec.columns.map((column) => {
+    assertIdentifier(column.name, "column");
+    return `${column.name} ${column.type}${column.mode === "REQUIRED" ? " NOT NULL" : ""}`;
+  });
+
+  return `CREATE TABLE IF NOT EXISTS \`${projectId}.${dataset}.${spec.table}\` (${columns.join(", ")})`;
+}
+
+/**
+ * BigQuery answers a query against a missing table with a 404 whose message is
+ * `Not found: Table project:dataset.table was not found in location …`. Only
+ * that exact table counts; a missing dataset says `Not found: Dataset`.
+ */
+function isMissingTableError(
+  error: unknown,
+  projectId: string,
+  dataset: string,
+  spec: BqTableSpec,
+): boolean {
+  if (!(error instanceof AppError) || error.code !== "BIGQUERY_QUERY_FAILED") {
+    return false;
+  }
+  return (
+    error.message.includes("Not found: Table") &&
+    error.message.includes(`${projectId}:${dataset}.${spec.table}`)
+  );
 }
 
 export function buildMergeSql(

@@ -9,7 +9,11 @@ own OAuth token with `jose` (RS256 JWT-bearer flow) and talks to
   token, and caches that token in KV under `bigquery:access-token:<client email>`
   for `expires_in - 300` seconds.
 - `client.ts` — `runQuery` (`jobs.query` + polling + result paging) and
-  `mergeRows` (upsert a batch of rows through one MERGE per chunk).
+  `mergeRows` (upsert a batch of rows through one MERGE per chunk). When the
+  first MERGE of a batch fails because the target table does not exist,
+  `mergeRows` creates it from the spec (`CREATE TABLE IF NOT EXISTS`) and
+  retries once; a missing dataset, a schema mismatch, or a permission error is
+  still raised as-is.
 - `params.ts` — named query parameters, including the `ARRAY<STRUCT<…>>` value
   that MERGE's `UNNEST(@rows)` source is built from.
 - `rows.ts` — decodes BigQuery's positional `schema` + `f/v` rows into objects.
