@@ -10,6 +10,7 @@ export {
 } from "@/server/lib/bigquery/auth";
 
 export {
+  buildCreateTableSql,
   buildMergeSql,
   mergeRows,
   runQuery,

@@ -147,8 +147,11 @@ async function projectTable(input: {
     }
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
+    // The message goes into the log line itself: Workers Logs keeps only the
+    // stack of a thrown Error passed as an argument, which is how a day of
+    // "Not found: Table" retries once showed up with no reason attached.
     console.error(
-      `[bigquery-projection] MERGE into ${input.dataset}.${input.table} failed for ${input.runKind} ${input.runId}:`,
+      `[bigquery-projection] MERGE into ${input.dataset}.${input.table} failed for ${input.runKind} ${input.runId}: ${error}`,
       err,
     );
   }
